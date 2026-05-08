@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Linear Programming Studio</title>
+    <meta
+      name="description"
+      content="Build and visualize 2D linear optimization problems by adding constraints and dragging the objective function."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">2D Linear Programming Explorer</p>
+          <h1>Build the region. Drag the objective. See the optimum.</h1>
+        </div>
+        <p class="hero-copy">
+          Students can enter constraints in slope-intercept form, visualize the
+          feasible polygon, and slide the objective function parallel to itself
+          to find the best point or edge.
+        </p>
+      </header>
+
+      <main class="workspace">
+        <section class="panel control-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Setup</p>
+              <h2>Constraints and objective</h2>
+            </div>
+            <div class="pill-row">
+              <span class="pill">GitHub Pages ready</span>
+              <span class="pill">No build step</span>
+            </div>
+          </div>
+
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h3>Constraints</h3>
+                <p>Add lines and half-planes to define the feasible set.</p>
+              </div>
+              <button id="add-constraint" class="button button-primary" type="button">
+                Add constraint
+              </button>
+            </div>
+
+            <div id="constraint-list" class="constraint-list" aria-live="polite"></div>
+
+            <div class="button-row">
+              <button id="load-example" class="button button-secondary" type="button">
+                Load example
+              </button>
+              <button id="clear-constraints" class="button button-ghost" type="button">
+                Clear all
+              </button>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head compact">
+              <div>
+                <h3>Objective function</h3>
+                <p>Drag the amber line on the graph to move it parallel to itself.</p>
+              </div>
+            </div>
+
+            <div class="form-grid objective-grid">
+              <label>
+                <span>Goal</span>
+                <select id="objective-mode">
+                  <option value="max">Maximize</option>
+                  <option value="min">Minimize</option>
+                </select>
+              </label>
+              <label>
+                <span>x coefficient</span>
+                <input id="objective-x" type="text" inputmode="decimal" value="3" />
+              </label>
+              <label>
+                <span>y coefficient</span>
+                <input id="objective-y" type="text" inputmode="decimal" value="2" />
+              </label>
+              <label>
+                <span>Current level z</span>
+                <input id="objective-level" type="text" inputmode="decimal" value="0" />
+              </label>
+            </div>
+
+            <div class="button-row">
+              <button id="snap-optimum" class="button button-secondary" type="button">
+                Snap line to optimum
+              </button>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head compact">
+              <div>
+                <h3>Graph window</h3>
+                <p>Adjust the visible region if your polygon is off screen.</p>
+              </div>
+            </div>
+
+            <div class="form-grid view-grid">
+              <label>
+                <span>x min</span>
+                <input id="view-x-min" type="text" inputmode="decimal" value="0" />
+              </label>
+              <label>
+                <span>x max</span>
+                <input id="view-x-max" type="text" inputmode="decimal" value="10" />
+              </label>
+              <label>
+                <span>y min</span>
+                <input id="view-y-min" type="text" inputmode="decimal" value="0" />
+              </label>
+              <label>
+                <span>y max</span>
+                <input id="view-y-max" type="text" inputmode="decimal" value="10" />
+              </label>
+            </div>
+
+            <div class="button-row">
+              <button id="reset-view" class="button button-ghost" type="button">
+                Reset view
+              </button>
+            </div>
+          </section>
+
+          <section class="card status-card">
+            <div class="card-head compact">
+              <div>
+                <h3>Live readout</h3>
+                <p>The app updates these summaries as the model changes.</p>
+              </div>
+            </div>
+
+            <div class="status-grid">
+              <article class="status-tile">
+                <span class="status-label">Feasible region</span>
+                <strong id="feasibility-badge" class="status-badge neutral">Checking</strong>
+                <p id="feasibility-text">Waiting for constraints.</p>
+              </article>
+              <article class="status-tile">
+                <span class="status-label">Objective line</span>
+                <strong id="objective-badge" class="status-badge neutral">Waiting</strong>
+                <p id="objective-text">Enter a nonzero objective to draw the line.</p>
+              </article>
+              <article class="status-tile wide">
+                <span class="status-label">Optimization result</span>
+                <strong id="optimum-badge" class="status-badge neutral">Not solved</strong>
+                <p id="optimum-text">Drag the line or snap it to the optimum.</p>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="panel graph-panel">
+          <div class="panel-head graph-head">
+            <div>
+              <p class="section-kicker">Visualization</p>
+              <h2>Feasible region and objective line</h2>
+            </div>
+            <p class="graph-hint">Drag the amber handle or line segment.</p>
+          </div>
+
+          <div class="plot-shell">
+            <svg
+              id="plot"
+              viewBox="0 0 720 720"
+              role="img"
+              aria-label="2D graph showing linear constraints, the feasible region, and the objective function"
+            ></svg>
+          </div>
+
+          <div class="plot-caption">
+            Constraint colors match the cards on the left. The shaded polygon is
+            the feasible region. The dashed amber line is the current objective
+            level.
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
