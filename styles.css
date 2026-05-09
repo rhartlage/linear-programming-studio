@@ -12,6 +12,8 @@
   --teal: #1f7a8c;
   --teal-soft: rgba(31, 122, 140, 0.15);
   --gold: #f5a623;
+  --gold-soft: rgba(245, 166, 35, 0.26);
+  --gold-line: rgba(245, 166, 35, 0.46);
   --success: #20684f;
   --warning: #8f5f00;
   --danger: #8d2b2b;
@@ -43,7 +45,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -148,6 +151,13 @@ select {
   border: 1px solid var(--line);
 }
 
+.objective-card {
+  background:
+    linear-gradient(180deg, rgba(255, 249, 239, 0.7), rgba(255, 231, 190, 0.84)),
+    var(--gold-soft);
+  border-color: var(--gold-line);
+}
+
 .card-head h3 {
   font-size: 1.12rem;
 }
@@ -161,6 +171,14 @@ select {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.spotlight-row {
+  margin-top: -4px;
+}
+
+.spotlight-button {
+  min-width: 220px;
 }
 
 .pill {
@@ -181,6 +199,9 @@ select {
   min-height: 42px;
   padding: 0 16px;
   cursor: pointer;
+  color: var(--ink);
+  background: rgba(31, 122, 140, 0.12);
+  box-shadow: none;
   transition:
     transform 0.16s ease,
     box-shadow 0.16s ease,
@@ -189,12 +210,13 @@ select {
 
 .button:hover {
   transform: translateY(-1px);
+  background: rgba(31, 122, 140, 0.2);
 }
 
 .button-primary {
-  color: #fff8f2;
-  background: linear-gradient(135deg, var(--accent) 0%, #f48540 100%);
-  box-shadow: 0 12px 24px rgba(240, 93, 61, 0.24);
+  color: var(--ink);
+  background: rgba(31, 122, 140, 0.12);
+  box-shadow: none;
 }
 
 .button-secondary {
@@ -203,8 +225,8 @@ select {
 }
 
 .button-ghost {
-  color: var(--ink-soft);
-  background: rgba(22, 33, 51, 0.06);
+  color: var(--ink);
+  background: rgba(31, 122, 140, 0.12);
 }
 
 .constraint-list {
@@ -215,9 +237,11 @@ select {
 
 .constraint-row {
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--constraint-line, var(--line));
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.52);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.22)),
+    var(--constraint-fill, rgba(255, 255, 255, 0.52));
 }
 
 .constraint-top {
@@ -233,6 +257,20 @@ select {
   align-items: center;
   gap: 10px;
   font-weight: 700;
+  flex-wrap: wrap;
+}
+
+.constraint-label {
+  min-width: 24px;
+}
+
+.constraint-name-input {
+  width: 88px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .constraint-swatch {
@@ -263,13 +301,25 @@ select {
   border-radius: 50%;
   border: 0;
   cursor: pointer;
-  color: var(--ink-soft);
-  background: rgba(22, 33, 51, 0.08);
+  color: var(--ink);
+  background: rgba(31, 122, 140, 0.12);
+  transition:
+    transform 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.icon-button:hover {
+  transform: translateY(-1px);
+  background: rgba(31, 122, 140, 0.2);
 }
 
 .form-grid {
   display: grid;
   gap: 12px;
+}
+
+.form-grid + .button-row {
+  margin-top: 10px;
 }
 
 .constraint-grid,
@@ -279,7 +329,19 @@ select {
 }
 
 .constraint-grid {
+  grid-template-columns: minmax(130px, 1.3fr) minmax(78px, 0.72fr) minmax(78px, 0.72fr);
+  gap: 10px;
   margin-bottom: 10px;
+}
+
+.constraint-grid label span {
+  font-size: 0.78rem;
+}
+
+.constraint-grid input,
+.constraint-grid select {
+  min-height: 40px;
+  padding: 0 10px;
 }
 
 label {
@@ -294,7 +356,8 @@ label span {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-height: 44px;
   padding: 0 12px;
@@ -400,6 +463,12 @@ select:focus,
   color: var(--accent-deep);
 }
 
+.plot-control-stack {
+  display: inline-grid;
+  gap: 10px;
+  justify-self: end;
+}
+
 .plot-shell {
   border-radius: 24px;
   padding: 10px;
@@ -408,11 +477,60 @@ select:focus,
   border: 1px solid rgba(255, 255, 255, 0.65);
 }
 
+.plot-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.92);
+  border: 1px solid rgba(22, 33, 51, 0.1);
+  box-shadow: 0 10px 28px rgba(20, 28, 44, 0.12);
+}
+
+.plot-toolbar-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.plot-tool-button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+  background: rgba(31, 122, 140, 0.12);
+  transition:
+    transform 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.plot-tool-button:hover {
+  transform: translateY(-1px);
+  background: rgba(31, 122, 140, 0.2);
+}
+
+.plot-reset-button {
+  justify-self: end;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
 #plot {
   display: block;
   width: 100%;
   height: auto;
   border-radius: 18px;
+  touch-action: none;
+  user-select: none;
   background:
     radial-gradient(circle at top left, rgba(31, 122, 140, 0.08), transparent 30%),
     linear-gradient(180deg, #fffef8 0%, #faf5ec 100%);
@@ -439,7 +557,6 @@ select:focus,
   .constraint-top {
     flex-direction: column;
   }
-
   .constraint-grid,
   .objective-grid,
   .view-grid,

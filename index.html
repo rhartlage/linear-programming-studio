@@ -43,65 +43,11 @@
             </div>
           </div>
 
-          <section class="card">
-            <div class="card-head">
-              <div>
-                <h3>Constraints</h3>
-                <p>Add lines and half-planes to define the feasible set.</p>
-              </div>
-              <button id="add-constraint" class="button button-primary" type="button">
-                Add constraint
-              </button>
-            </div>
-
-            <div id="constraint-list" class="constraint-list" aria-live="polite"></div>
-
-            <div class="button-row">
-              <button id="load-example" class="button button-secondary" type="button">
-                Load example
-              </button>
-              <button id="clear-constraints" class="button button-ghost" type="button">
-                Clear all
-              </button>
-            </div>
-          </section>
-
-          <section class="card">
-            <div class="card-head compact">
-              <div>
-                <h3>Objective function</h3>
-                <p>Drag the amber line on the graph to move it parallel to itself.</p>
-              </div>
-            </div>
-
-            <div class="form-grid objective-grid">
-              <label>
-                <span>Goal</span>
-                <select id="objective-mode">
-                  <option value="max">Maximize</option>
-                  <option value="min">Minimize</option>
-                </select>
-              </label>
-              <label>
-                <span>x coefficient</span>
-                <input id="objective-x" type="text" inputmode="decimal" value="3" />
-              </label>
-              <label>
-                <span>y coefficient</span>
-                <input id="objective-y" type="text" inputmode="decimal" value="2" />
-              </label>
-              <label>
-                <span>Current level z</span>
-                <input id="objective-level" type="text" inputmode="decimal" value="0" />
-              </label>
-            </div>
-
-            <div class="button-row">
-              <button id="snap-optimum" class="button button-secondary" type="button">
-                Snap line to optimum
-              </button>
-            </div>
-          </section>
+          <div class="button-row spotlight-row">
+            <button id="load-example" class="button button-secondary spotlight-button" type="button">
+              Restore default example
+            </button>
+          </div>
 
           <section class="card">
             <div class="card-head compact">
@@ -137,6 +83,101 @@
             </div>
           </section>
 
+          <section class="card objective-card">
+            <div class="card-head">
+              <div>
+                <h3>Objective function</h3>
+                <p>Drag the amber midpoint to move it in parallel, or drag an endpoint to change its slope.</p>
+              </div>
+            </div>
+
+            <div class="form-grid objective-grid">
+              <label>
+                <span>Mode</span>
+                <select id="objective-mode">
+                  <option value="max">Maximize</option>
+                  <option value="min">Minimize</option>
+                </select>
+              </label>
+              <label>
+                <span>Slope m</span>
+                <input id="objective-x" type="text" inputmode="decimal" value="0.75" />
+              </label>
+              <label>
+                <span>Intercept b</span>
+                <input id="objective-y" type="text" inputmode="decimal" value="1" />
+              </label>
+              <label>
+                <span>Level z</span>
+                <input id="objective-level" type="text" inputmode="decimal" value="2" />
+              </label>
+            </div>
+
+            <div class="button-row">
+              <button id="snap-optimum" class="button button-secondary" type="button">
+                Snap objective to optimum
+              </button>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h3>Constraints</h3>
+                <p>Add lines and half-planes to define the feasible set.</p>
+              </div>
+              <button id="add-constraint" class="button button-primary" type="button">
+                Add constraint
+              </button>
+            </div>
+
+            <div id="constraint-list" class="constraint-list" aria-live="polite"></div>
+
+            <div class="button-row">
+              <button id="clear-constraints" class="button button-ghost" type="button">
+                Clear all
+              </button>
+            </div>
+          </section>
+
+        </section>
+
+        <section class="panel graph-panel">
+          <div class="panel-head graph-head">
+            <div>
+              <p class="section-kicker">Visualization</p>
+              <h2>Feasible region and objective line</h2>
+            </div>
+            <p class="graph-hint">Drag the graph to pan, use the zoom buttons or your mouse wheel to scale the window, and move the colored lines directly on the plot.</p>
+          </div>
+
+          <div class="plot-control-stack">
+            <div class="plot-toolbar" aria-label="Graph controls">
+              <span class="plot-toolbar-label">Zoom</span>
+              <button id="zoom-out" class="plot-tool-button" type="button" aria-label="Zoom out">-</button>
+              <button id="zoom-in" class="plot-tool-button" type="button" aria-label="Zoom in">+</button>
+            </div>
+            <button id="reset-view-inline" class="button button-ghost plot-reset-button" type="button">
+              Reset view
+            </button>
+          </div>
+
+          <div class="plot-shell">
+            <svg
+              id="plot"
+              viewBox="0 0 720 720"
+              role="img"
+              aria-label="2D graph showing linear constraints, the feasible region, and the objective function"
+            ></svg>
+          </div>
+
+          <div class="plot-caption">
+            Constraint colors match the cards on the left. Drag the graph
+            background to pan the window, use the zoom controls or your mouse
+            wheel to scale it, and move or rotate the lines directly on the
+            plot.
+          </div>
+
           <section class="card status-card">
             <div class="card-head compact">
               <div>
@@ -163,31 +204,6 @@
               </article>
             </div>
           </section>
-        </section>
-
-        <section class="panel graph-panel">
-          <div class="panel-head graph-head">
-            <div>
-              <p class="section-kicker">Visualization</p>
-              <h2>Feasible region and objective line</h2>
-            </div>
-            <p class="graph-hint">Drag the amber handle or line segment.</p>
-          </div>
-
-          <div class="plot-shell">
-            <svg
-              id="plot"
-              viewBox="0 0 720 720"
-              role="img"
-              aria-label="2D graph showing linear constraints, the feasible region, and the objective function"
-            ></svg>
-          </div>
-
-          <div class="plot-caption">
-            Constraint colors match the cards on the left. The shaded polygon is
-            the feasible region. The dashed amber line is the current objective
-            level.
-          </div>
         </section>
       </main>
     </div>

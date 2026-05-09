@@ -1,6 +1,10 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 const EPSILON = 1e-7;
 const PLOT_BOX = { x: 74, y: 26, width: 612, height: 612 };
+const MIN_SLOPE_DX_RATIO = 0.015;
+const MIN_VIEW_SPAN = 0.5;
+const ZOOM_IN_FACTOR = 0.8;
+const ZOOM_OUT_FACTOR = 1.25;
 const CONSTRAINT_TYPES = [
   { value: "line_leq", label: "y <= mx + b" },
   { value: "line_geq", label: "y >= mx + b" },
@@ -36,6 +40,9 @@ const dom = {
   viewYMin: document.getElementById("view-y-min"),
   viewYMax: document.getElementById("view-y-max"),
   resetView: document.getElementById("reset-view"),
+  resetViewInline: document.getElementById("reset-view-inline"),
+  zoomIn: document.getElementById("zoom-in"),
+  zoomOut: document.getElementById("zoom-out"),
   feasibilityBadge: document.getElementById("feasibility-badge"),
   feasibilityText: document.getElementById("feasibility-text"),
   objectiveBadge: document.getElementById("objective-badge"),
@@ -53,9 +60,9 @@ const EXAMPLE_PROBLEM = {
   ],
   objective: {
     mode: "max",
-    xCoeff: "3",
-    yCoeff: "2",
-    level: 6,
+    xCoeff: "0.75",
+    yCoeff: "1",
+    level: 2,
   },
   view: {
     xMin: "0",
@@ -69,8 +76,8 @@ const state = {
   constraints: [],
   objective: {
     mode: "max",
-    xCoeff: "3",
-    yCoeff: "2",
+    xCoeff: "0.75",
+    yCoeff: "1",
     level: 0,
   },
   view: {
@@ -90,6 +97,12 @@ initialize();
 function initialize() {
   bindStaticEvents();
   loadExampleProblem();
+}
+
+function resetViewToDefault() {
+  state.view = { ...EXAMPLE_PROBLEM.view };
+  syncViewInputs();
+  refresh();
 }
 
 function bindStaticEvents() {
@@ -137,10 +150,15 @@ function bindStaticEvents() {
     });
   });
 
-  dom.resetView.addEventListener("click", () => {
-    state.view = { ...EXAMPLE_PROBLEM.view };
-    syncViewInputs();
-    refresh();
+  dom.resetView.addEventListener("click", resetViewToDefault);
+  dom.resetViewInline.addEventListener("click", resetViewToDefault);
+
+  dom.zoomIn.addEventListener("click", () => {
+    zoomView(ZOOM_IN_FACTOR);
+  });
+
+  dom.zoomOut.addEventListener("click", () => {
+    zoomView(ZOOM_OUT_FACTOR);
   });
 
   dom.snapOptimum.addEventListener("click", () => {
@@ -153,6 +171,7 @@ function bindStaticEvents() {
   });
 
   dom.plot.addEventListener("pointerdown", handlePlotPointerDown);
+  dom.plot.addEventListener("wheel", handlePlotWheel, { passive: false });
   window.addEventListener("pointermove", handlePlotPointerMove);
   window.addEventListener("pointerup", handlePlotPointerUp);
 }
@@ -189,6 +208,13 @@ function handleConstraintInput(event) {
     return;
   }
 
+  if (event.target.matches("[data-field='name']")) {
+    constraint.name = event.target.value;
+    updateConstraintHeading(constraint.id);
+    refresh();
+    return;
+  }
+
   if (event.target.matches("[data-field='param1']")) {
     constraint.param1 = event.target.value;
     updateConstraintEquation(constraint.id);
@@ -220,59 +246,330 @@ function handleConstraintClick(event) {
 }
 
 function handlePlotPointerDown(event) {
-  const analysis = getAnalysis();
-  if (!analysis.currentLineSegment) {
-    return;
-  }
-
-  const point = clientToSvgPoint(event);
-  const distance = pointToSegmentDistance(point, analysis.currentLineSegment.start, analysis.currentLineSegment.end);
-  if (distance > 18) {
-    return;
-  }
-
-  const startWorld = svgToWorld(point.x, point.y, analysis.view);
-  dragState = {
-    startWorld,
-    startLevel: state.objective.level,
-  };
-  dom.plot.style.cursor = "grabbing";
-  event.preventDefault();
-}
-
-function handlePlotPointerMove(event) {
-  if (!dragState) {
-    const analysis = getAnalysis();
-    if (!analysis.currentLineSegment) {
-      dom.plot.style.cursor = "default";
-      return;
-    }
-    const point = clientToSvgPoint(event);
-    const distance = pointToSegmentDistance(point, analysis.currentLineSegment.start, analysis.currentLineSegment.end);
-    dom.plot.style.cursor = distance <= 18 ? "grab" : "default";
+  const dragTarget = event.target.closest("[data-drag-kind]");
+  if (!dragTarget) {
     return;
   }
 
   const analysis = getAnalysis();
   const point = clientToSvgPoint(event);
   const worldPoint = svgToWorld(point.x, point.y, analysis.view);
-  const dx = worldPoint.x - dragState.startWorld.x;
-  const dy = worldPoint.y - dragState.startWorld.y;
-  const objective = getObjectiveCoefficients();
-  const delta = objective.x * dx + objective.y * dy;
-  state.objective.level = dragState.startLevel + delta;
-  syncObjectiveInputs();
+  const dragKind = dragTarget.dataset.dragKind;
+
+  if (dragKind === "objective") {
+    if (!analysis.currentLineSegment) {
+      return;
+    }
+    dragState = {
+      kind: "objective",
+      pointerId: event.pointerId,
+      startWorld: worldPoint,
+      startLevel: toNumber(state.objective.level, 0),
+    };
+  } else if (dragKind === "objective-slope") {
+    if (!analysis.currentLineSegment) {
+      return;
+    }
+    const anchorWorld = dragTarget.dataset.handle === "start"
+      ? analysis.currentLineSegment.worldEnd
+      : analysis.currentLineSegment.worldStart;
+    dragState = {
+      kind: "objective-slope",
+      pointerId: event.pointerId,
+      anchorWorld,
+      startMagnitude: getObjectiveMagnitude(),
+    };
+  } else if (dragKind === "view-pan") {
+    dragState = {
+      kind: "view-pan",
+      pointerId: event.pointerId,
+      startWorld: worldPoint,
+      startView: { ...analysis.view },
+    };
+  } else if (dragKind === "constraint-translate") {
+    const constraint = findConstraintById(dragTarget.dataset.constraintId);
+    const halfPlane = constraint ? convertConstraintToHalfPlane(constraint) : null;
+    if (!constraint || !halfPlane) {
+      return;
+    }
+    dragState = {
+      kind: "constraint-translate",
+      pointerId: event.pointerId,
+      constraintId: constraint.id,
+      startWorld: worldPoint,
+      startLine: { ...halfPlane.line },
+    };
+  } else if (dragKind === "constraint-slope") {
+    const constraint = findConstraintById(dragTarget.dataset.constraintId);
+    const entry = constraint
+      ? analysis.constraintEntries.find((item) => item.id === constraint.id)
+      : null;
+    if (!constraint || !entry || !entry.segment || !constraint.type.startsWith("line_")) {
+      return;
+    }
+    const anchorWorld = dragTarget.dataset.handle === "start"
+      ? entry.segment.worldEnd
+      : entry.segment.worldStart;
+    dragState = {
+      kind: "constraint-slope",
+      pointerId: event.pointerId,
+      constraintId: constraint.id,
+      anchorWorld,
+      minDx: (analysis.view.xMax - analysis.view.xMin) * MIN_SLOPE_DX_RATIO,
+    };
+  } else {
+    return;
+  }
+
+  if (typeof dom.plot.setPointerCapture === "function") {
+    try {
+      dom.plot.setPointerCapture(event.pointerId);
+    } catch {}
+  }
+
+  dom.plot.style.cursor = dragState.kind.includes("slope") ? "crosshair" : "grabbing";
+  event.preventDefault();
+}
+
+function handlePlotPointerMove(event) {
+  if (!dragState) {
+    const dragTarget = event.target.closest?.("[data-drag-kind]");
+    dom.plot.style.cursor = dragTarget?.dataset.cursor ?? "default";
+    return;
+  }
+
+  if (event.pointerId !== dragState.pointerId) {
+    return;
+  }
+
+  const analysis = getAnalysis();
+  const point = clientToSvgPoint(event);
+  const worldPoint = svgToWorld(point.x, point.y, analysis.view);
+
+  if (dragState.kind === "view-pan") {
+    const pointInStartView = svgToWorld(point.x, point.y, dragState.startView);
+    const dx = pointInStartView.x - dragState.startWorld.x;
+    const dy = pointInStartView.y - dragState.startWorld.y;
+    setViewWindow({
+      xMin: dragState.startView.xMin - dx,
+      xMax: dragState.startView.xMax - dx,
+      yMin: dragState.startView.yMin - dy,
+      yMax: dragState.startView.yMax - dy,
+    });
+    syncViewInputs();
+    refresh(false);
+    return;
+  }
+
+  if (dragState.kind === "objective") {
+    const dx = worldPoint.x - dragState.startWorld.x;
+    const dy = worldPoint.y - dragState.startWorld.y;
+    const objective = getObjectiveCoefficients();
+    const delta = objective.x * dx + objective.y * dy;
+    const unclampedLevel = dragState.startLevel + delta;
+    state.objective.level = clampObjectiveLevel(unclampedLevel, analysis.objectiveRange);
+    syncObjectiveInputs();
+    refresh(false);
+    return;
+  }
+
+  if (dragState.kind === "objective-slope") {
+    rotateObjectiveThroughAnchor(dragState.anchorWorld, worldPoint, dragState.startMagnitude);
+    clampObjectiveToFeasibleRange();
+    syncObjectiveInputs();
+    refresh(false);
+    return;
+  }
+
+  const constraint = findConstraintById(dragState.constraintId);
+  if (!constraint) {
+    return;
+  }
+
+  if (dragState.kind === "constraint-translate") {
+    const dx = worldPoint.x - dragState.startWorld.x;
+    const dy = worldPoint.y - dragState.startWorld.y;
+    translateConstraintByDelta(constraint, dragState.startLine, dx, dy);
+  } else if (dragState.kind === "constraint-slope") {
+    rotateConstraintThroughAnchor(constraint, dragState.anchorWorld, worldPoint, dragState.minDx);
+  }
+
+  clampObjectiveToFeasibleRange();
+  syncConstraintRow(constraint.id);
   refresh(false);
 }
 
-function handlePlotPointerUp() {
-  if (!dragState) {
+function handlePlotWheel(event) {
+  if (dragState || event.deltaY === 0) {
     return;
+  }
+
+  event.preventDefault();
+
+  const point = clientToSvgPoint(event);
+  const clampedPoint = {
+    x: clamp(PLOT_BOX.x, point.x, PLOT_BOX.x + PLOT_BOX.width),
+    y: clamp(PLOT_BOX.y, point.y, PLOT_BOX.y + PLOT_BOX.height),
+  };
+  const anchorWorld = svgToWorld(clampedPoint.x, clampedPoint.y, getViewWindow());
+  const factor = event.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR;
+
+  zoomView(factor, anchorWorld);
+}
+
+function handlePlotPointerUp(event) {
+  if (!dragState) {
+    dom.plot.style.cursor = "default";
+    return;
+  }
+
+  if (event.pointerId !== undefined && event.pointerId !== dragState.pointerId) {
+    return;
+  }
+
+  if (typeof dom.plot.releasePointerCapture === "function") {
+    try {
+      dom.plot.releasePointerCapture(dragState.pointerId);
+    } catch {}
   }
 
   dragState = null;
   dom.plot.style.cursor = "default";
   refresh();
+}
+
+function findConstraintById(constraintId) {
+  return state.constraints.find((item) => item.id === Number(constraintId)) ?? null;
+}
+
+function syncConstraintRow(constraintId) {
+  const row = dom.constraintList.querySelector(`.constraint-row[data-id="${constraintId}"]`);
+  const constraint = findConstraintById(constraintId);
+  if (!row || !constraint) {
+    return;
+  }
+
+  const param1Input = row.querySelector("[data-field='param1']");
+  const param2Input = row.querySelector("[data-field='param2']");
+  const nameInput = row.querySelector("[data-field='name']");
+  if (nameInput) {
+    nameInput.value = constraint.name;
+    nameInput.placeholder = getDefaultConstraintName(constraintId);
+  }
+  if (param1Input) {
+    param1Input.value = constraint.param1;
+  }
+  if (param2Input) {
+    param2Input.value = constraint.param2;
+  }
+
+  updateConstraintEquation(constraintId);
+  updateConstraintHeading(constraintId);
+}
+
+function translateConstraintByDelta(constraint, startLine, dx, dy) {
+  const shiftedC = startLine.c + startLine.a * dx + startLine.b * dy;
+
+  switch (constraint.type) {
+    case "line_leq":
+      constraint.param2 = formatNumber(shiftedC);
+      break;
+    case "line_geq":
+      constraint.param2 = formatNumber(-shiftedC);
+      break;
+    case "x_leq":
+    case "y_leq":
+      constraint.param1 = formatNumber(shiftedC);
+      break;
+    case "x_geq":
+    case "y_geq":
+      constraint.param1 = formatNumber(-shiftedC);
+      break;
+    default:
+      break;
+  }
+}
+
+function rotateConstraintThroughAnchor(constraint, anchorWorld, worldPoint, minDx) {
+  if (!constraint.type.startsWith("line_")) {
+    return;
+  }
+
+  let dx = worldPoint.x - anchorWorld.x;
+  if (Math.abs(dx) < minDx) {
+    dx = dx >= 0 ? minDx : -minDx;
+  }
+
+  const slope = (worldPoint.y - anchorWorld.y) / dx;
+  const intercept = anchorWorld.y - slope * anchorWorld.x;
+  constraint.param1 = formatNumber(slope);
+  constraint.param2 = formatNumber(intercept);
+}
+
+function clampObjectiveToFeasibleRange() {
+  analysisCache = null;
+  const analysis = getAnalysis();
+  state.objective.level = clampObjectiveLevel(toNumber(state.objective.level, 0), analysis.objectiveRange);
+  syncObjectiveInputs();
+}
+
+function zoomView(factor, anchorWorld = null) {
+  const view = getViewWindow();
+  const spanX = Math.max(view.xMax - view.xMin, MIN_VIEW_SPAN);
+  const spanY = Math.max(view.yMax - view.yMin, MIN_VIEW_SPAN);
+  const nextSpanX = Math.max(spanX * factor, MIN_VIEW_SPAN);
+  const nextSpanY = Math.max(spanY * factor, MIN_VIEW_SPAN);
+  const focusX = anchorWorld?.x ?? (view.xMin + view.xMax) / 2;
+  const focusY = anchorWorld?.y ?? (view.yMin + view.yMax) / 2;
+  const focusRatioX = spanX <= EPSILON ? 0.5 : (focusX - view.xMin) / spanX;
+  const focusRatioY = spanY <= EPSILON ? 0.5 : (focusY - view.yMin) / spanY;
+
+  setViewWindow({
+    xMin: focusX - focusRatioX * nextSpanX,
+    xMax: focusX + (1 - focusRatioX) * nextSpanX,
+    yMin: focusY - focusRatioY * nextSpanY,
+    yMax: focusY + (1 - focusRatioY) * nextSpanY,
+  });
+  syncViewInputs();
+  refresh(false);
+}
+
+function rotateObjectiveThroughAnchor(anchorWorld, worldPoint, magnitude) {
+  const dx = worldPoint.x - anchorWorld.x;
+  const dy = worldPoint.y - anchorWorld.y;
+  const directionLength = Math.hypot(dx, dy);
+  if (directionLength <= EPSILON) {
+    return;
+  }
+
+  let normal = {
+    x: dy / directionLength,
+    y: -dx / directionLength,
+  };
+
+  const currentObjective = getObjectiveCoefficients();
+  if (normal.x * currentObjective.x + normal.y * currentObjective.y < 0) {
+    normal = {
+      x: -normal.x,
+      y: -normal.y,
+    };
+  }
+
+  const scale = magnitude > EPSILON ? magnitude : 1;
+  const nextX = normal.x * scale;
+  const nextY = normal.y * scale;
+  const nextLevel = nextX * anchorWorld.x + nextY * anchorWorld.y;
+
+  state.objective.xCoeff = formatNumber(nextX);
+  state.objective.yCoeff = formatNumber(nextY);
+  state.objective.level = nextLevel;
+}
+
+function midpointWorld(start, end) {
+  return {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2,
+  };
 }
 
 function loadExampleProblem() {
@@ -288,6 +585,7 @@ function loadExampleProblem() {
 function createConstraint(seed = {}) {
   return {
     id: nextConstraintId++,
+    name: seed.name ?? "",
     type: seed.type ?? "line_leq",
     param1: seed.param1 ?? "1",
     param2: seed.param2 ?? "0",
@@ -313,13 +611,27 @@ function renderConstraintList() {
     row.dataset.id = String(constraint.id);
 
     const color = getConstraintColor(index);
+    const fillColor = hexToRgba(color, 0.24);
+    const lineColor = hexToRgba(color, 0.44);
+    row.style.setProperty("--constraint-fill", fillColor);
+    row.style.setProperty("--constraint-line", lineColor);
     const labels = getConstraintFieldLabels(constraint.type);
+    const displayName = getConstraintDisplayName(constraint, index);
+    const defaultName = getDefaultConstraintName(constraint.id);
 
     row.innerHTML = `
       <div class="constraint-top">
         <div class="constraint-title">
           <span class="constraint-swatch" style="background:${color}"></span>
-          <span>C${index + 1}</span>
+          <span class="constraint-label" data-role="constraint-label">${escapeHtml(displayName)}</span>
+          <input
+            class="constraint-name-input"
+            data-field="name"
+            type="text"
+            value="${escapeHtml(constraint.name)}"
+            placeholder="${escapeHtml(defaultName)}"
+            aria-label="Constraint name"
+          />
         </div>
         <div class="constraint-tools">
           <label class="toggle">
@@ -381,6 +693,20 @@ function updateConstraintEquation(constraintId) {
   }
 }
 
+function updateConstraintHeading(constraintId) {
+  const row = dom.constraintList.querySelector(`.constraint-row[data-id="${constraintId}"]`);
+  const constraint = findConstraintById(constraintId);
+  if (!row || !constraint) {
+    return;
+  }
+
+  const index = state.constraints.findIndex((item) => item.id === constraintId);
+  const label = row.querySelector("[data-role='constraint-label']");
+  if (label) {
+    label.textContent = getConstraintDisplayName(constraint, index);
+  }
+}
+
 function syncObjectiveFromInputs(includeLevel) {
   state.objective.mode = dom.objectiveMode.value;
   state.objective.xCoeff = dom.objectiveX.value;
@@ -428,10 +754,25 @@ function getAnalysis() {
   }
 
   const view = getViewWindow();
-  const halfPlanes = state.constraints
-    .filter((constraint) => constraint.enabled)
-    .map(convertConstraintToHalfPlane)
+  const constraintEntries = state.constraints
+    .map((constraint, index) => {
+      if (!constraint.enabled) {
+        return null;
+      }
+      const halfPlane = convertConstraintToHalfPlane(constraint);
+      if (!halfPlane) {
+        return null;
+      }
+      return {
+        id: constraint.id,
+        index,
+        constraint,
+        halfPlane,
+        segment: lineSegmentInView(halfPlane.line, view),
+      };
+    })
     .filter(Boolean);
+  const halfPlanes = constraintEntries.map((entry) => entry.halfPlane);
   const objective = getObjectiveCoefficients();
   const currentLevel = toNumber(state.objective.level, 0);
   const visiblePolygon = clipPolygon(makeRectangle(view.xMin, view.xMax, view.yMin, view.yMax), halfPlanes);
@@ -457,10 +798,16 @@ function getAnalysis() {
     view,
     objective,
   });
+  const objectiveRange = getObjectiveLevelRange({
+    halfPlanes,
+    worldPolygon,
+    objective,
+  });
 
   analysisCache = {
     view,
     halfPlanes,
+    constraintEntries,
     visiblePolygon,
     worldPolygon,
     feasibility,
@@ -469,6 +816,7 @@ function getAnalysis() {
     objectiveLine,
     currentLineSegment,
     currentContacts,
+    objectiveRange,
     optimization,
   };
 
@@ -532,6 +880,36 @@ function analyzeOptimization({ halfPlanes, worldPolygon, visiblePolygon, view, o
       ? `Optimal value ${formatNumber(bestValue)} occurs along an edge.`
       : `Optimal value ${formatNumber(bestValue)} occurs at a vertex.`,
   };
+}
+
+function getObjectiveLevelRange({ halfPlanes, worldPolygon, objective }) {
+  if (!worldPolygon.length || Math.hypot(objective.x, objective.y) <= EPSILON) {
+    return {
+      minLevel: -Infinity,
+      maxLevel: Infinity,
+      lowerBounded: false,
+      upperBounded: false,
+    };
+  }
+
+  const values = worldPolygon.map((point) => evaluateObjective(point, objective));
+  const lowerUnbounded = isObjectiveUnbounded(halfPlanes, { x: -objective.x, y: -objective.y });
+  const upperUnbounded = isObjectiveUnbounded(halfPlanes, objective);
+
+  return {
+    minLevel: lowerUnbounded ? -Infinity : Math.min(...values),
+    maxLevel: upperUnbounded ? Infinity : Math.max(...values),
+    lowerBounded: !lowerUnbounded,
+    upperBounded: !upperUnbounded,
+  };
+}
+
+function clampObjectiveLevel(level, objectiveRange) {
+  if (!objectiveRange) {
+    return level;
+  }
+
+  return Math.min(Math.max(level, objectiveRange.minLevel), objectiveRange.maxLevel);
 }
 
 function renderStatuses(analysis) {
@@ -604,11 +982,15 @@ function renderPlot(analysis) {
     background: svgGroup(),
     grid: svgGroup(),
     region: svgGroup(),
+    interaction: svgGroup(),
     constraints: svgGroup(),
     overlay: svgGroup(),
     axes: svgGroup(),
     labels: svgGroup(),
   };
+  ["background", "grid", "region", "axes", "labels"].forEach((key) => {
+    layers[key].setAttribute("pointer-events", "none");
+  });
 
   drawPlotBackdrop(layers.background);
   drawGrid(layers.grid, analysis.view);
@@ -617,7 +999,8 @@ function renderPlot(analysis) {
     drawVisibleRegion(layers.region, analysis.visiblePolygon, analysis.view);
   }
 
-  drawConstraints(layers.constraints, analysis.view);
+  drawPanSurface(layers.interaction);
+  drawConstraints(layers.constraints, analysis);
   drawAxes(layers.axes, analysis.view);
   drawObjectiveLine(layers.overlay, analysis);
   drawOptimizationOverlay(layers.overlay, analysis);
@@ -637,6 +1020,22 @@ function drawPlotBackdrop(group) {
     stroke: "rgba(22,33,51,0.08)",
   });
   group.appendChild(surface);
+}
+
+function drawPanSurface(group) {
+  group.appendChild(
+    svgElement("rect", {
+      x: PLOT_BOX.x,
+      y: PLOT_BOX.y,
+      width: PLOT_BOX.width,
+      height: PLOT_BOX.height,
+      rx: 18,
+      fill: "rgba(255,255,255,0.001)",
+      "data-drag-kind": "view-pan",
+      "data-cursor": "grab",
+      style: "cursor:grab",
+    })
+  );
 }
 
 function drawGrid(group, view) {
@@ -687,24 +1086,43 @@ function drawVisibleRegion(group, polygon, view) {
   );
 }
 
-function drawConstraints(group, view) {
-  state.constraints.forEach((constraint, index) => {
-    if (!constraint.enabled) {
-      return;
-    }
+function drawConstraints(group, analysis) {
+  const lineLayer = svgGroup();
+  const midpointLayer = svgGroup();
+  const slopeLayer = svgGroup();
+  const labelLayer = svgGroup();
 
-    const halfPlane = convertConstraintToHalfPlane(constraint);
-    if (!halfPlane) {
-      return;
-    }
-
-    const segment = lineSegmentInView(halfPlane.line, view);
+  analysis.constraintEntries.forEach((entry) => {
+    const { constraint, index, segment, id } = entry;
     if (!segment) {
       return;
     }
 
     const color = getConstraintColor(index);
-    group.appendChild(
+    const midpoint = segment.midpoint;
+    const translateSegment = constraint.type.startsWith("line_")
+      ? insetSvgSegment(segment.start, segment.end, 18)
+      : { start: segment.start, end: segment.end };
+    const hitAttributes = {
+      x1: translateSegment.start.x,
+      y1: translateSegment.start.y,
+      x2: translateSegment.end.x,
+      y2: translateSegment.end.y,
+      stroke: "transparent",
+      "stroke-width": 22,
+      "data-drag-kind": "constraint-translate",
+      "data-constraint-id": id,
+      "data-cursor": "grab",
+      style: "cursor:grab",
+    };
+
+    lineLayer.appendChild(
+      svgElement("line", {
+        ...hitAttributes,
+      })
+    );
+
+    lineLayer.appendChild(
       svgElement("line", {
         x1: segment.start.x,
         y1: segment.start.y,
@@ -713,24 +1131,62 @@ function drawConstraints(group, view) {
         stroke: color,
         "stroke-width": 3,
         "stroke-linecap": "round",
+        "pointer-events": "none",
       })
     );
 
-    const labelPoint = {
-      x: (segment.start.x + segment.end.x) / 2,
-      y: (segment.start.y + segment.end.y) / 2,
-    };
+    midpointLayer.appendChild(
+      svgElement("circle", {
+        cx: midpoint.x,
+        cy: midpoint.y,
+        r: 6.5,
+        fill: color,
+        stroke: "rgba(255,255,255,0.95)",
+        "stroke-width": 3,
+        "data-drag-kind": "constraint-translate",
+        "data-constraint-id": id,
+        "data-cursor": "grab",
+        style: "cursor:grab",
+      })
+    );
 
-    group.appendChild(
+    if (constraint.type.startsWith("line_")) {
+      ["start", "end"].forEach((handleKey) => {
+        const point = handleKey === "start" ? segment.start : segment.end;
+        slopeLayer.appendChild(
+          svgElement("circle", {
+            cx: point.x,
+            cy: point.y,
+            r: 6,
+            fill: "#fffdf8",
+            stroke: color,
+            "stroke-width": 3,
+            "data-drag-kind": "constraint-slope",
+            "data-constraint-id": id,
+            "data-handle": handleKey,
+            "data-cursor": "crosshair",
+            style: "cursor:crosshair",
+          })
+        );
+      });
+    }
+
+    labelLayer.appendChild(
       svgElement("text", {
-        x: labelPoint.x + 8,
-        y: labelPoint.y - 8,
+        x: midpoint.x + 10,
+        y: midpoint.y - 10,
         fill: color,
         "font-size": 14,
         "font-weight": 700,
-      }, `C${index + 1}`)
+        "pointer-events": "none",
+      }, getConstraintDisplayName(constraint, index))
     );
   });
+
+  group.appendChild(lineLayer);
+  group.appendChild(midpointLayer);
+  group.appendChild(slopeLayer);
+  group.appendChild(labelLayer);
 }
 
 function drawAxes(group, view) {
@@ -765,13 +1221,21 @@ function drawObjectiveLine(group, analysis) {
     return;
   }
 
+  const lineLayer = svgGroup();
+  const handleLayer = svgGroup();
+  const labelLayer = svgGroup();
+  const translateSegment = insetSvgSegment(analysis.currentLineSegment.start, analysis.currentLineSegment.end, 18);
+
   const hitLine = svgElement("line", {
-    x1: analysis.currentLineSegment.start.x,
-    y1: analysis.currentLineSegment.start.y,
-    x2: analysis.currentLineSegment.end.x,
-    y2: analysis.currentLineSegment.end.y,
+    x1: translateSegment.start.x,
+    y1: translateSegment.start.y,
+    x2: translateSegment.end.x,
+    y2: translateSegment.end.y,
     stroke: "transparent",
     "stroke-width": 24,
+    "data-drag-kind": "objective",
+    "data-cursor": "grab",
+    style: "cursor:grab",
   });
 
   const visibleLine = svgElement("line", {
@@ -783,15 +1247,39 @@ function drawObjectiveLine(group, analysis) {
     "stroke-width": 4,
     "stroke-dasharray": "14 10",
     "stroke-linecap": "round",
+    "pointer-events": "none",
   });
 
   const handle = svgElement("circle", {
-    cx: (analysis.currentLineSegment.start.x + analysis.currentLineSegment.end.x) / 2,
-    cy: (analysis.currentLineSegment.start.y + analysis.currentLineSegment.end.y) / 2,
+    cx: analysis.currentLineSegment.midpoint.x,
+    cy: analysis.currentLineSegment.midpoint.y,
     r: 8,
     fill: "#F5A623",
     stroke: "#FFF9E9",
     "stroke-width": 3,
+    "data-drag-kind": "objective",
+    "data-cursor": "grab",
+    style: "cursor:grab",
+  });
+
+  ["start", "end"].forEach((handleKey) => {
+    const point = handleKey === "start"
+      ? analysis.currentLineSegment.start
+      : analysis.currentLineSegment.end;
+    handleLayer.appendChild(
+      svgElement("circle", {
+        cx: point.x,
+        cy: point.y,
+        r: 6.5,
+        fill: "#fff8e7",
+        stroke: "#F5A623",
+        "stroke-width": 3,
+        "data-drag-kind": "objective-slope",
+        "data-handle": handleKey,
+        "data-cursor": "crosshair",
+        style: "cursor:crosshair",
+      })
+    );
   });
 
   const label = svgElement(
@@ -803,14 +1291,19 @@ function drawObjectiveLine(group, analysis) {
       "font-size": 15,
       "font-weight": 700,
       "text-anchor": "middle",
+      "pointer-events": "none",
     },
     `z = ${formatNumber(analysis.currentLevel)}`
   );
 
-  group.appendChild(hitLine);
-  group.appendChild(visibleLine);
-  group.appendChild(handle);
-  group.appendChild(label);
+  lineLayer.appendChild(hitLine);
+  lineLayer.appendChild(visibleLine);
+  handleLayer.appendChild(handle);
+  labelLayer.appendChild(label);
+
+  group.appendChild(lineLayer);
+  group.appendChild(handleLayer);
+  group.appendChild(labelLayer);
 }
 
 function drawOptimizationOverlay(group, analysis) {
@@ -829,6 +1322,7 @@ function drawOptimizationOverlay(group, analysis) {
           fill: "#F5A623",
           stroke: "#FFF9E9",
           "stroke-width": 2,
+          "pointer-events": "none",
         })
       );
     });
@@ -851,6 +1345,7 @@ function drawOptimizationOverlay(group, analysis) {
         stroke: "#0E5C51",
         "stroke-width": 6,
         "stroke-linecap": "round",
+        "pointer-events": "none",
       })
     );
   }
@@ -865,6 +1360,7 @@ function drawOptimizationOverlay(group, analysis) {
         fill: "#0E5C51",
         stroke: "#E7FFF8",
         "stroke-width": 2,
+        "pointer-events": "none",
       })
     );
   });
@@ -943,11 +1439,23 @@ function getViewWindow() {
   return { xMin, xMax, yMin, yMax };
 }
 
+function setViewWindow(view) {
+  state.view.xMin = formatNumber(view.xMin);
+  state.view.xMax = formatNumber(view.xMax);
+  state.view.yMin = formatNumber(view.yMin);
+  state.view.yMax = formatNumber(view.yMax);
+}
+
 function getObjectiveCoefficients() {
   return {
     x: toNumber(state.objective.xCoeff, 0),
     y: toNumber(state.objective.yCoeff, 0),
   };
+}
+
+function getObjectiveMagnitude() {
+  const objective = getObjectiveCoefficients();
+  return Math.hypot(objective.x, objective.y);
 }
 
 function convertConstraintToHalfPlane(constraint) {
@@ -1088,8 +1596,21 @@ function lineSegmentInView(line, view) {
     return null;
   }
 
-  const [a, b] = unique.slice(0, 2).map((point) => worldToSvg(point.x, point.y, view));
-  return { start: a, end: b };
+  const [worldStart, worldEnd] = unique
+    .slice(0, 2)
+    .sort((first, second) => (Math.abs(first.x - second.x) > 1e-5 ? first.x - second.x : first.y - second.y));
+  const start = worldToSvg(worldStart.x, worldStart.y, view);
+  const end = worldToSvg(worldEnd.x, worldEnd.y, view);
+  const worldMidpoint = midpointWorld(worldStart, worldEnd);
+
+  return {
+    worldStart,
+    worldEnd,
+    worldMidpoint,
+    start,
+    end,
+    midpoint: worldToSvg(worldMidpoint.x, worldMidpoint.y, view),
+  };
 }
 
 function segmentLineIntersection(start, end, line) {
@@ -1306,6 +1827,16 @@ function getConstraintFieldLabels(type) {
   return { param1: "Value c", param2: "Unused", hideParam2: true };
 }
 
+function getDefaultConstraintName(constraintId) {
+  const index = state.constraints.findIndex((item) => item.id === Number(constraintId));
+  return `c${index + 1}`;
+}
+
+function getConstraintDisplayName(constraint, index) {
+  const fallback = `c${index + 1}`;
+  return constraint.name.trim() || fallback;
+}
+
 function getConstraintColor(index) {
   return PALETTE[index % PALETTE.length];
 }
@@ -1325,6 +1856,28 @@ function pointToSegmentDistance(point, segmentStart, segmentEnd) {
   };
 
   return Math.hypot(point.x - projection.x, point.y - projection.y);
+}
+
+function insetSvgSegment(start, end, inset) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= inset * 2 + EPSILON) {
+    return { start, end };
+  }
+
+  const ux = dx / length;
+  const uy = dy / length;
+  return {
+    start: {
+      x: start.x + ux * inset,
+      y: start.y + uy * inset,
+    },
+    end: {
+      x: end.x - ux * inset,
+      y: end.y - uy * inset,
+    },
+  };
 }
 
 function dedupePoints(points) {
@@ -1391,4 +1944,18 @@ function escapeHtml(text) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = hex.replace("#", "");
+  const isShort = normalized.length === 3;
+  const expanded = isShort
+    ? normalized.split("").map((part) => `${part}${part}`).join("")
+    : normalized;
+
+  const red = Number.parseInt(expanded.slice(0, 2), 16);
+  const green = Number.parseInt(expanded.slice(2, 4), 16);
+  const blue = Number.parseInt(expanded.slice(4, 6), 16);
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
