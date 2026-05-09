@@ -103,7 +103,7 @@ textarea {
 
 .control-column {
   display: grid;
-  gap: 14px;
+  gap: 18px;
   align-content: start;
 }
 
@@ -185,6 +185,29 @@ textarea {
 
 .spotlight-button {
   min-width: 220px;
+}
+
+.return-link-row {
+  margin-bottom: 2px;
+}
+
+.return-link-button,
+.return-link-button:visited,
+.return-link-button:hover,
+.return-link-button:active {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.return-link-button {
+  background: #dce7e6;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.return-link-button:hover {
+  background: #d3e0de;
 }
 
 .pill {
