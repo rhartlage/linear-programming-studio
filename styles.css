@@ -101,6 +101,12 @@ textarea {
   grid-template-columns: minmax(360px, 530px) minmax(0, 1fr);
 }
 
+.control-column {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
 .panel {
   background: var(--panel);
   backdrop-filter: blur(14px);
