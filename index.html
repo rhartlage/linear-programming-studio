@@ -112,7 +112,7 @@
                 aria-labelledby="model-tab-table"
                 hidden
               >
-                <div class="form-grid table-loader-setup-grid">
+                <div id="table-loader-setup-grid" class="form-grid table-loader-setup-grid">
                   <label>
                     <span>Column labels</span>
                     <select id="table-variable-mode">
@@ -120,7 +120,7 @@
                       <option value="xy">x and y coefficients</option>
                     </select>
                   </label>
-                  <label>
+                  <label id="table-variable-one-wrap" class="table-variable-name-field">
                     <span>Variable 1 name</span>
                     <input
                       id="table-variable-one"
@@ -130,7 +130,7 @@
                       placeholder="Ex. A or S"
                     />
                   </label>
-                  <label>
+                  <label id="table-variable-two-wrap" class="table-variable-name-field">
                     <span>Variable 2 name</span>
                     <input
                       id="table-variable-two"

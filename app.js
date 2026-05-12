@@ -43,7 +43,10 @@ const dom = {
   modelPanelStatement: document.getElementById("model-panel-statement"),
   modelPanelTable: document.getElementById("model-panel-table"),
   statementInput: document.getElementById("statement-input"),
+  tableLoaderSetupGrid: document.getElementById("table-loader-setup-grid"),
   tableVariableMode: document.getElementById("table-variable-mode"),
+  tableVariableOneWrap: document.getElementById("table-variable-one-wrap"),
+  tableVariableTwoWrap: document.getElementById("table-variable-two-wrap"),
   tableVariableOne: document.getElementById("table-variable-one"),
   tableVariableTwo: document.getElementById("table-variable-two"),
   tableObjectiveXLabel: document.getElementById("table-objective-x-label"),
@@ -205,6 +208,14 @@ function buildTableNonnegativeLabel(context) {
 
 function syncTableLoaderUi() {
   const context = getTableVariableContext();
+  const useNamedVariables = context.mode === "named";
+  dom.tableLoaderSetupGrid.classList.toggle("is-xy-mode", !useNamedVariables);
+  dom.tableVariableOneWrap.classList.toggle("is-hidden", !useNamedVariables);
+  dom.tableVariableTwoWrap.classList.toggle("is-hidden", !useNamedVariables);
+  dom.tableVariableOneWrap.hidden = !useNamedVariables;
+  dom.tableVariableTwoWrap.hidden = !useNamedVariables;
+  dom.tableVariableOne.disabled = !useNamedVariables;
+  dom.tableVariableTwo.disabled = !useNamedVariables;
   dom.tableObjectiveXLabel.textContent = context.xCoeffLabel;
   dom.tableObjectiveYLabel.textContent = context.yCoeffLabel;
   dom.tableHeaderXLabel.textContent = context.xCoeffLabel;
@@ -265,11 +276,18 @@ function bindStaticEvents() {
     });
   });
 
+  const syncAndInvalidateTableUi = () => {
+    syncTableLoaderUi();
+    invalidateModelPreview();
+  };
+
+  dom.tableVariableMode.addEventListener("change", syncAndInvalidateTableUi);
+  dom.tableVariableMode.addEventListener("input", syncAndInvalidateTableUi);
+  dom.tableVariableOne.addEventListener("input", syncAndInvalidateTableUi);
+  dom.tableVariableTwo.addEventListener("input", syncAndInvalidateTableUi);
+
   [
     dom.statementInput,
-    dom.tableVariableMode,
-    dom.tableVariableOne,
-    dom.tableVariableTwo,
     dom.tableObjectiveMode,
     dom.tableObjectiveX,
     dom.tableObjectiveY,
@@ -277,13 +295,6 @@ function bindStaticEvents() {
   ].forEach((control) => {
     const eventName = control.tagName === "SELECT" || control.type === "checkbox" ? "change" : "input";
     control.addEventListener(eventName, () => {
-      if (
-        control === dom.tableVariableMode ||
-        control === dom.tableVariableOne ||
-        control === dom.tableVariableTwo
-      ) {
-        syncTableLoaderUi();
-      }
       invalidateModelPreview();
     });
   });
