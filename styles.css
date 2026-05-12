@@ -400,10 +400,6 @@ textarea {
   margin-top: 2px;
 }
 
-.model-load-grid {
-  grid-template-columns: minmax(0, 220px);
-}
-
 .table-loader-objective-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

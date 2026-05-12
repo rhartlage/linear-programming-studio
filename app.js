@@ -48,7 +48,6 @@ const dom = {
   tableSheetBody: document.getElementById("table-sheet-body"),
   addTableRow: document.getElementById("add-table-row"),
   tableDefaultNonnegative: document.getElementById("table-default-nonnegative"),
-  modelLoadStrategy: document.getElementById("model-load-strategy"),
   previewModel: document.getElementById("preview-model"),
   applyModel: document.getElementById("apply-model"),
   clearModelInput: document.getElementById("clear-model-input"),
@@ -173,7 +172,6 @@ function bindStaticEvents() {
     dom.tableObjectiveX,
     dom.tableObjectiveY,
     dom.tableDefaultNonnegative,
-    dom.modelLoadStrategy,
   ].forEach((control) => {
     const eventName = control.tagName === "SELECT" || control.type === "checkbox" ? "change" : "input";
     control.addEventListener(eventName, () => {
@@ -694,20 +692,13 @@ function clearModelLoader() {
   dom.tableObjectiveY.value = "";
   resetTableSheetRows();
   dom.tableDefaultNonnegative.checked = true;
-  dom.modelLoadStrategy.value = "replace";
   modelPreview = null;
   renderModelPreview(null);
 }
 
 function applyParsedModel(preview) {
-  const loadStrategy = dom.modelLoadStrategy.value;
   const nextConstraints = preview.constraints.map((constraint) => createConstraint(constraint));
-
-  if (loadStrategy === "replace") {
-    state.constraints = nextConstraints;
-  } else {
-    state.constraints.push(...nextConstraints);
-  }
+  state.constraints = nextConstraints;
 
   if (preview.objective) {
     state.objective.mode = preview.objective.mode;
@@ -2019,7 +2010,10 @@ function renderStatuses(analysis) {
       dom.optimumText.textContent = analysis.optimization.message;
       break;
     case "bounded":
-      if (analysis.optimization.bestContacts.length > 1) {
+      if (!isObjectiveAtOptimum(analysis)) {
+        setStatus(dom.optimumBadge, "Keep exploring", "neutral");
+        dom.optimumText.textContent = buildHiddenOptimumText();
+      } else if (analysis.optimization.bestContacts.length > 1) {
         setStatus(dom.optimumBadge, "Edge optimum", "success");
         dom.optimumText.textContent = buildEdgeOptimumText(analysis.optimization);
       } else {
@@ -2037,6 +2031,22 @@ function renderStatuses(analysis) {
 function setStatus(node, text, tone) {
   node.textContent = text;
   node.className = `status-badge ${tone}`;
+}
+
+function isObjectiveAtOptimum(analysis) {
+  if (analysis.optimization.status !== "bounded") {
+    return false;
+  }
+
+  return Math.abs(analysis.currentLevel - analysis.optimization.bestValue) <= 5e-4;
+}
+
+function buildHiddenOptimumText() {
+  return [
+    "Optimal Value: Hidden until the objective reaches the optimum",
+    "Optimal Point: Hidden until the objective reaches the optimum",
+    "Drag the objective or use Snap objective to optimum to reveal the solution.",
+  ].join("\n");
 }
 
 function buildVertexOptimumText(bestValue, point) {
