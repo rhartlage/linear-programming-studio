@@ -47,6 +47,7 @@ const dom = {
   tableObjectiveY: document.getElementById("table-objective-y"),
   tableSheetBody: document.getElementById("table-sheet-body"),
   addTableRow: document.getElementById("add-table-row"),
+  removeTableRow: document.getElementById("remove-table-row"),
   tableDefaultNonnegative: document.getElementById("table-default-nonnegative"),
   previewModel: document.getElementById("preview-model"),
   applyModel: document.getElementById("apply-model"),
@@ -192,6 +193,10 @@ function bindStaticEvents() {
     const row = appendTableSheetRow();
     focusTableSheetRow(row);
     invalidateModelPreview();
+  });
+
+  dom.removeTableRow.addEventListener("click", () => {
+    removeLastTableSheetRow();
   });
 
   dom.previewModel.addEventListener("click", () => {
@@ -1051,6 +1056,43 @@ function handleTableSheetEdit(event) {
 
   ensureTrailingBlankTableRow();
   invalidateModelPreview();
+}
+
+function removeLastTableSheetRow() {
+  const rows = getTableSheetRows();
+  if (!rows.length) {
+    return;
+  }
+
+  if (rows.length > MIN_TABLE_SHEET_ROWS) {
+    rows[rows.length - 1].remove();
+    invalidateModelPreview();
+    return;
+  }
+
+  const targetRow = [...rows].reverse().find((row) => rowHasTableValues(row));
+  if (!targetRow) {
+    return;
+  }
+
+  resetTableSheetRow(targetRow);
+  invalidateModelPreview();
+}
+
+function resetTableSheetRow(row) {
+  const rowIndex = Number(row.dataset.rowIndex ?? "0");
+  TABLE_SHEET_COLUMNS.forEach((column) => {
+    const field = row.querySelector(`[data-col-key="${column.key}"]`);
+    if (!field) {
+      return;
+    }
+
+    if (column.key === "name") {
+      field.value = getDefaultTableRowName(rowIndex);
+    } else {
+      field.value = "";
+    }
+  });
 }
 
 function handleTableSheetPaste(event) {
