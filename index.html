@@ -112,6 +112,36 @@
                 aria-labelledby="model-tab-table"
                 hidden
               >
+                <div class="form-grid table-loader-setup-grid">
+                  <label>
+                    <span>Column labels</span>
+                    <select id="table-variable-mode">
+                      <option value="named" selected>LP variable names</option>
+                      <option value="xy">x and y coefficients</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Variable 1 name</span>
+                    <input
+                      id="table-variable-one"
+                      type="text"
+                      inputmode="text"
+                      value="A"
+                      placeholder="Ex. A or S"
+                    />
+                  </label>
+                  <label>
+                    <span>Variable 2 name</span>
+                    <input
+                      id="table-variable-two"
+                      type="text"
+                      inputmode="text"
+                      value="B"
+                      placeholder="Ex. B or D"
+                    />
+                  </label>
+                </div>
+
                 <div class="form-grid table-loader-objective-grid">
                   <label>
                     <span>Objective mode</span>
@@ -121,11 +151,11 @@
                     </select>
                   </label>
                   <label>
-                    <span>x coeff</span>
+                    <span id="table-objective-x-label">A coeff</span>
                     <input id="table-objective-x" type="text" inputmode="text" placeholder="Ex. 1 or 1/2" />
                   </label>
                   <label>
-                    <span>y coeff</span>
+                    <span id="table-objective-y-label">B coeff</span>
                     <input id="table-objective-y" type="text" inputmode="text" placeholder="Ex. 1 or 1/2" />
                   </label>
                 </div>
@@ -140,8 +170,8 @@
                       <div class="table-sheet-row table-sheet-header" role="row">
                         <div class="table-sheet-index" aria-hidden="true"></div>
                         <div class="table-sheet-cell" role="columnheader">name</div>
-                        <div class="table-sheet-cell" role="columnheader">x coeff</div>
-                        <div class="table-sheet-cell" role="columnheader">y coeff</div>
+                        <div id="table-header-x-label" class="table-sheet-cell" role="columnheader">A coeff</div>
+                        <div id="table-header-y-label" class="table-sheet-cell" role="columnheader">B coeff</div>
                         <div class="table-sheet-cell" role="columnheader">relation</div>
                         <div class="table-sheet-cell" role="columnheader">rhs</div>
                       </div>
@@ -160,10 +190,10 @@
 
                 <label class="loader-inline-toggle">
                   <input id="table-default-nonnegative" type="checkbox" checked />
-                  <span>Add `x >= 0` and `y >= 0` if they are not already listed</span>
+                  <span id="table-default-nonnegative-label">Add `A >= 0` and `B >= 0` if they are not already listed</span>
                 </label>
 
-                <p class="loader-note">Paste spreadsheet rows directly into the grid. A header row is optional, the columns are `name`, `x coeff`, `y coeff`, `relation`, and `rhs`, and fractions like `1/2` are accepted.</p>
+                <p id="table-loader-note" class="loader-note">Paste spreadsheet rows directly into the grid. A header row is optional, the columns are `name`, `A coeff`, `B coeff`, `relation`, and `rhs`. Fractions like `1/2` are accepted, and strict `<` or `>` will be treated as `<=` or `>=` for graphing.</p>
               </div>
 
               <div class="button-row">

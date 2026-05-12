@@ -6,6 +6,7 @@ const MIN_VIEW_SPAN = 0.5;
 const ZOOM_IN_FACTOR = 0.8;
 const ZOOM_OUT_FACTOR = 1.25;
 const MIN_TABLE_SHEET_ROWS = 6;
+const DEFAULT_TABLE_VARIABLES = { x: "A", y: "B" };
 const CONSTRAINT_TYPES = [
   { value: "line_leq", label: "y <= mx + b" },
   { value: "line_geq", label: "y >= mx + b" },
@@ -28,7 +29,7 @@ const TABLE_SHEET_COLUMNS = [
   { key: "name", label: "name", placeholder: "" },
   { key: "xCoeff", label: "x coeff", placeholder: "Ex. 1 or 1/2", inputMode: "text" },
   { key: "yCoeff", label: "y coeff", placeholder: "Ex. 1 or 1/2", inputMode: "text" },
-  { key: "relation", label: "relation", options: ["", "<=", ">=", "="] },
+  { key: "relation", label: "relation", options: ["", "<=", "<", ">=", ">", "="] },
   { key: "rhs", label: "rhs", placeholder: "8 or 5/2", inputMode: "text" },
 ];
 
@@ -42,13 +43,22 @@ const dom = {
   modelPanelStatement: document.getElementById("model-panel-statement"),
   modelPanelTable: document.getElementById("model-panel-table"),
   statementInput: document.getElementById("statement-input"),
+  tableVariableMode: document.getElementById("table-variable-mode"),
+  tableVariableOne: document.getElementById("table-variable-one"),
+  tableVariableTwo: document.getElementById("table-variable-two"),
+  tableObjectiveXLabel: document.getElementById("table-objective-x-label"),
+  tableObjectiveYLabel: document.getElementById("table-objective-y-label"),
   tableObjectiveMode: document.getElementById("table-objective-mode"),
   tableObjectiveX: document.getElementById("table-objective-x"),
   tableObjectiveY: document.getElementById("table-objective-y"),
+  tableHeaderXLabel: document.getElementById("table-header-x-label"),
+  tableHeaderYLabel: document.getElementById("table-header-y-label"),
   tableSheetBody: document.getElementById("table-sheet-body"),
   addTableRow: document.getElementById("add-table-row"),
   removeTableRow: document.getElementById("remove-table-row"),
   tableDefaultNonnegative: document.getElementById("table-default-nonnegative"),
+  tableDefaultNonnegativeLabel: document.getElementById("table-default-nonnegative-label"),
+  tableLoaderNote: document.getElementById("table-loader-note"),
   previewModel: document.getElementById("preview-model"),
   applyModel: document.getElementById("apply-model"),
   clearModelInput: document.getElementById("clear-model-input"),
@@ -139,8 +149,91 @@ function resetViewToDefault() {
 
 function initializeModelLoader() {
   resetTableSheetRows();
+  syncTableLoaderUi();
   setActiveLoaderTab(activeLoaderTab);
   renderModelPreview(null);
+}
+
+function getTableVariableContext() {
+  const mode = dom.tableVariableMode.value === "xy" ? "xy" : "named";
+  const firstName = sanitizeTableVariableName(dom.tableVariableOne.value, DEFAULT_TABLE_VARIABLES.x);
+  const secondName = sanitizeTableVariableName(dom.tableVariableTwo.value, DEFAULT_TABLE_VARIABLES.y);
+  const xLabel = mode === "named" ? firstName : "x";
+  const yLabel = mode === "named" ? secondName : "y";
+  const warnings = [];
+
+  if (mode === "named" && firstName.toUpperCase() === secondName.toUpperCase()) {
+    warnings.push(
+      `Both table variables are named ${firstName}, so the first ${firstName} column will map to x and the second ${secondName} column will map to y.`
+    );
+  }
+
+  const variableSummary = mode === "named"
+    ? `${firstName} -> x, ${secondName} -> y`
+    : "Table columns map directly to x and y.";
+
+  return {
+    mode,
+    xLabel,
+    yLabel,
+    xCoeffLabel: `${xLabel} coeff`,
+    yCoeffLabel: `${yLabel} coeff`,
+    variableSummary,
+    warnings,
+    variableLabels: { x: xLabel, y: yLabel },
+  };
+}
+
+function sanitizeTableVariableName(value, fallback) {
+  const trimmed = String(value ?? "").trim();
+  return trimmed || fallback;
+}
+
+function buildTableLoaderNote(context) {
+  const columnText = context.mode === "named"
+    ? `\`name\`, \`${context.xCoeffLabel}\`, \`${context.yCoeffLabel}\`, \`relation\`, and \`rhs\``
+    : "`name`, `x coeff`, `y coeff`, `relation`, and `rhs`";
+  const mappingText = context.mode === "named"
+    ? ` ${context.xLabel} maps to x and ${context.yLabel} maps to y in the graph.`
+    : "";
+  return `Paste spreadsheet rows directly into the grid. A header row is optional, the columns are ${columnText}. Fractions like \`1/2\` are accepted, and strict \`<\` or \`>\` will be treated as \`<=\` or \`>=\` for graphing.${mappingText}`;
+}
+
+function buildTableNonnegativeLabel(context) {
+  return `Add \`${context.xLabel} >= 0\` and \`${context.yLabel} >= 0\` if they are not already listed`;
+}
+
+function syncTableLoaderUi() {
+  const context = getTableVariableContext();
+  dom.tableObjectiveXLabel.textContent = context.xCoeffLabel;
+  dom.tableObjectiveYLabel.textContent = context.yCoeffLabel;
+  dom.tableHeaderXLabel.textContent = context.xCoeffLabel;
+  dom.tableHeaderYLabel.textContent = context.yCoeffLabel;
+  dom.tableDefaultNonnegativeLabel.textContent = buildTableNonnegativeLabel(context);
+  dom.tableLoaderNote.textContent = buildTableLoaderNote(context);
+  refreshTableSheetFieldLabels(context);
+}
+
+function refreshTableSheetFieldLabels(context = getTableVariableContext()) {
+  getTableSheetRows().forEach((row, index) => {
+    TABLE_SHEET_COLUMNS.forEach((column) => {
+      const field = row.querySelector(`[data-col-key="${column.key}"]`);
+      if (!field) {
+        return;
+      }
+      field.setAttribute("aria-label", `Constraint table ${getTableSheetColumnLabel(column.key, context)} row ${index + 1}`);
+    });
+  });
+}
+
+function getTableSheetColumnLabel(columnKey, context = getTableVariableContext()) {
+  if (columnKey === "xCoeff") {
+    return context.xCoeffLabel;
+  }
+  if (columnKey === "yCoeff") {
+    return context.yCoeffLabel;
+  }
+  return TABLE_SHEET_COLUMNS.find((column) => column.key === columnKey)?.label ?? columnKey;
 }
 
 function setActiveLoaderTab(tab) {
@@ -174,6 +267,9 @@ function bindStaticEvents() {
 
   [
     dom.statementInput,
+    dom.tableVariableMode,
+    dom.tableVariableOne,
+    dom.tableVariableTwo,
     dom.tableObjectiveMode,
     dom.tableObjectiveX,
     dom.tableObjectiveY,
@@ -181,6 +277,13 @@ function bindStaticEvents() {
   ].forEach((control) => {
     const eventName = control.tagName === "SELECT" || control.type === "checkbox" ? "change" : "input";
     control.addEventListener(eventName, () => {
+      if (
+        control === dom.tableVariableMode ||
+        control === dom.tableVariableOne ||
+        control === dom.tableVariableTwo
+      ) {
+        syncTableLoaderUi();
+      }
       invalidateModelPreview();
     });
   });
@@ -697,11 +800,15 @@ function loadPreviewIntoGraph() {
 
 function clearModelLoader() {
   dom.statementInput.value = "";
+  dom.tableVariableMode.value = "named";
+  dom.tableVariableOne.value = DEFAULT_TABLE_VARIABLES.x;
+  dom.tableVariableTwo.value = DEFAULT_TABLE_VARIABLES.y;
   dom.tableObjectiveMode.value = "max";
   dom.tableObjectiveX.value = "";
   dom.tableObjectiveY.value = "";
   resetTableSheetRows();
   dom.tableDefaultNonnegative.checked = true;
+  syncTableLoaderUi();
   modelPreview = null;
   renderModelPreview(null);
 }
@@ -771,7 +878,7 @@ function renderModelPreview(preview, idleMessage = "Paste a model, then click Pr
     sections.push(`
       <section class="model-preview-section">
         <h4>Objective</h4>
-        <p class="model-preview-message">${escapeHtml(formatObjectiveSummary(preview.objective))}</p>
+        <p class="model-preview-message">${escapeHtml(formatObjectiveSummary(preview.objective, preview.variableLabels))}</p>
       </section>
     `);
   }
@@ -842,7 +949,12 @@ function parseStatementModel(text) {
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean);
-  const { variableMap, variableSummary, warnings: variableWarnings } = inferVariableMap(lines);
+  const {
+    variableMap,
+    variableSummary,
+    warnings: variableWarnings,
+    variableLabels,
+  } = inferVariableMap(lines);
   const warnings = [...variableWarnings];
   const errors = [];
   const constraints = [];
@@ -886,14 +998,16 @@ function parseStatementModel(text) {
     warnings,
     errors,
     variableSummary,
+    variableLabels,
   };
 }
 
 function parseTableModel() {
-  const warnings = [];
+  const tableContext = getTableVariableContext();
+  const warnings = [...tableContext.warnings];
   const errors = [];
   const constraints = [];
-  const parsedObjective = parseTableObjective();
+  const parsedObjective = parseTableObjective(tableContext);
   const tableRows = readTableSheetRows();
 
   if (parsedObjective.error) {
@@ -901,7 +1015,7 @@ function parseTableModel() {
   }
 
   const objective = parsedObjective.objective;
-  const tableResult = parseConstraintTableRows(tableRows);
+  const tableResult = parseConstraintTableRows(tableRows, tableContext);
   constraints.push(...tableResult.constraints);
   warnings.push(...tableResult.warnings);
   errors.push(...tableResult.errors);
@@ -915,7 +1029,7 @@ function parseTableModel() {
         param2: "0",
         enabled: true,
       });
-      warnings.push("Added x >= 0 because it was not listed in the table.");
+      warnings.push(`Added ${tableContext.xLabel} >= 0 because it was not listed in the table.`);
     }
     if (!hasAxisNonnegativeConstraint(constraints, "y")) {
       constraints.push({
@@ -925,7 +1039,7 @@ function parseTableModel() {
         param2: "0",
         enabled: true,
       });
-      warnings.push("Added y >= 0 because it was not listed in the table.");
+      warnings.push(`Added ${tableContext.yLabel} >= 0 because it was not listed in the table.`);
     }
   }
 
@@ -943,7 +1057,8 @@ function parseTableModel() {
     constraints,
     warnings,
     errors,
-    variableSummary: "Table columns map directly to x and y.",
+    variableSummary: tableContext.variableSummary,
+    variableLabels: tableContext.variableLabels,
   };
 }
 
@@ -960,6 +1075,7 @@ function ensureTableSheetMinimumRows(minimumRows = MIN_TABLE_SHEET_ROWS) {
 
 function appendTableSheetRow(values = {}) {
   const rowIndex = dom.tableSheetBody.children.length;
+  const tableContext = getTableVariableContext();
   const row = document.createElement("div");
   row.className = "table-sheet-row";
   row.dataset.rowIndex = String(rowIndex);
@@ -998,7 +1114,7 @@ function appendTableSheetRow(values = {}) {
 
     field.className = "table-sheet-field";
     field.dataset.colKey = column.key;
-    field.setAttribute("aria-label", `Constraint table ${column.label} row ${rowIndex + 1}`);
+    field.setAttribute("aria-label", `Constraint table ${getTableSheetColumnLabel(column.key, tableContext)} row ${rowIndex + 1}`);
     cell.appendChild(field);
     row.appendChild(cell);
   });
@@ -1177,7 +1293,7 @@ function normalizePastedTableRows(rawRows) {
     return { rows: [], usesColumnMap: false };
   }
 
-  const headerMap = buildTableColumnMap(rawRows[0]);
+  const headerMap = buildTableColumnMap(rawRows[0], getTableVariableContext());
   if (headerMap) {
     return {
       rows: rawRows.slice(1).map((row) => mapPastedTableRow(row, headerMap)),
@@ -1208,7 +1324,7 @@ function mapPastedTableRow(row, columnMap) {
   });
 }
 
-function parseTableObjective() {
+function parseTableObjective(tableContext = getTableVariableContext()) {
   const xText = dom.tableObjectiveX.value.trim();
   const yText = dom.tableObjectiveY.value.trim();
   if (!xText && !yText) {
@@ -1220,7 +1336,7 @@ function parseTableObjective() {
   if (!Number.isFinite(xCoeff) || !Number.isFinite(yCoeff)) {
     return {
       objective: null,
-      error: "The table objective row needs valid numeric x and y coefficients.",
+      error: `The table objective row needs valid numeric ${tableContext.xLabel} and ${tableContext.yLabel} coefficients.`,
     };
   }
 
@@ -1235,7 +1351,7 @@ function parseTableObjective() {
   };
 }
 
-function parseConstraintTableRows(rows) {
+function parseConstraintTableRows(rows, tableContext = getTableVariableContext()) {
   const warnings = [];
   const errors = [];
   const constraints = [];
@@ -1260,11 +1376,11 @@ function parseConstraintTableRows(rows) {
     const rhs = parseFlexibleNumber(rhsText);
 
     if (!relation || !["<=", ">=", "="].includes(relation)) {
-      errors.push(`Row ${index + 1}: relation must be <=, >=, or =.`);
+      errors.push(`Row ${index + 1}: relation must be <=, <, >=, >, or =.`);
       return;
     }
     if (!Number.isFinite(xCoeff) || !Number.isFinite(yCoeff) || !Number.isFinite(rhs)) {
-      errors.push(`Row ${index + 1}: x coeff, y coeff, and rhs must all be numeric.`);
+      errors.push(`Row ${index + 1}: ${tableContext.xCoeffLabel}, ${tableContext.yCoeffLabel}, and rhs must all be numeric.`);
       return;
     }
 
@@ -1308,13 +1424,19 @@ function splitDelimitedRow(line, delimiter) {
   return line.split(delimiter).map((part) => part.trim());
 }
 
-function buildTableColumnMap(headerRow) {
+function buildTableColumnMap(headerRow, tableContext = getTableVariableContext()) {
   const normalizedHeaders = headerRow.map((header) => normalizeTableHeader(header));
   const findIndex = (aliases) => normalizedHeaders.findIndex((header) => aliases.includes(header));
+  const xAliases = tableContext.mode === "named"
+    ? buildTableHeaderAliases("x", tableContext.xLabel)
+    : buildTableHeaderAliases("x");
+  const yAliases = tableContext.mode === "named"
+    ? buildTableHeaderAliases("y", tableContext.yLabel)
+    : buildTableHeaderAliases("y");
   const columnMap = {
     name: findIndex(["name", "constraint", "label"]),
-    xCoeff: findIndex(["xcoeff", "xcoefficient", "x", "ax", "coeffx"]),
-    yCoeff: findIndex(["ycoeff", "ycoefficient", "y", "by", "coeffy"]),
+    xCoeff: findIndex(xAliases),
+    yCoeff: findIndex(yAliases),
     relation: findIndex(["relation", "operator", "sign", "op"]),
     rhs: findIndex(["rhs", "bound", "value", "constant"]),
   };
@@ -1326,8 +1448,28 @@ function buildTableColumnMap(headerRow) {
   return columnMap;
 }
 
+function buildTableHeaderAliases(axisName, customName = "") {
+  const aliasSet = new Set([
+    `${axisName}coeff`,
+    `${axisName}coefficient`,
+    axisName,
+    axisName === "x" ? "ax" : "by",
+    `coeff${axisName}`,
+  ]);
+
+  const normalizedCustom = normalizeTableHeader(customName);
+  if (normalizedCustom) {
+    aliasSet.add(normalizedCustom);
+    aliasSet.add(`${normalizedCustom}coeff`);
+    aliasSet.add(`${normalizedCustom}coefficient`);
+    aliasSet.add(`coeff${normalizedCustom}`);
+  }
+
+  return Array.from(aliasSet);
+}
+
 function normalizeTableHeader(header) {
-  return String(header).toLowerCase().replace(/[^a-z]/g, "");
+  return String(header).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function hasAxisNonnegativeConstraint(constraints, axis) {
@@ -1420,6 +1562,7 @@ function inferVariableMap(lines) {
   return {
     variableMap,
     variableSummary: `${firstVariable} -> x, ${secondVariable} -> y`,
+    variableLabels: { x: firstVariable, y: secondVariable },
     warnings,
   };
 }
@@ -1635,15 +1778,15 @@ function normalizeRelationOperator(operator) {
   return operator;
 }
 
-function formatObjectiveSummary(objective) {
+function formatObjectiveSummary(objective, variableLabels = { x: "x", y: "y" }) {
   const modeLabel = objective.mode === "min" ? "Min" : "Max";
-  return `${modeLabel} ${formatLinearObjective(objective.xCoeff, objective.yCoeff)}`;
+  return `${modeLabel} ${formatLinearObjective(objective.xCoeff, objective.yCoeff, variableLabels)}`;
 }
 
-function formatLinearObjective(xCoeff, yCoeff) {
+function formatLinearObjective(xCoeff, yCoeff, variableLabels = { x: "x", y: "y" }) {
   const terms = [
-    formatVariableTerm(xCoeff, "x"),
-    formatVariableTerm(yCoeff, "y"),
+    formatVariableTerm(xCoeff, variableLabels.x ?? "x"),
+    formatVariableTerm(yCoeff, variableLabels.y ?? "y"),
   ].filter(Boolean);
 
   if (!terms.length) {

@@ -404,6 +404,10 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.table-loader-setup-grid {
+  grid-template-columns: minmax(180px, 1.2fr) repeat(2, minmax(0, 1fr));
+}
+
 .model-preview {
   display: grid;
   gap: 12px;
@@ -803,6 +807,7 @@ textarea:focus,
   }
   .constraint-grid,
   .objective-grid,
+  .table-loader-setup-grid,
   .table-loader-objective-grid,
   .view-grid,
   .status-grid {
