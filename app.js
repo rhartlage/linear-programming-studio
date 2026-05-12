@@ -126,7 +126,12 @@ function initialize() {
 }
 
 function resetViewToDefault() {
-  state.view = { ...EXAMPLE_PROBLEM.view };
+  const nextView = getResetView();
+  if (nextView) {
+    setViewWindow(nextView);
+  } else {
+    state.view = { ...EXAMPLE_PROBLEM.view };
+  }
   syncViewInputs();
   refresh();
 }
@@ -2635,6 +2640,63 @@ function getObjectiveMagnitude() {
 }
 
 function autoFitViewToConstraints(constraints) {
+  const nextView = computeConstraintFitBounds(constraints);
+  if (!nextView) {
+    return;
+  }
+
+  setViewWindow(nextView);
+}
+
+function getResetView() {
+  const baseView = computeConstraintFitBounds(state.constraints) ?? getExampleViewWindow();
+  if (!state.constraints.length) {
+    return baseView;
+  }
+
+  const halfPlanes = state.constraints
+    .map(convertConstraintToHalfPlane)
+    .filter(Boolean);
+  if (!halfPlanes.length) {
+    return baseView;
+  }
+
+  const objective = getObjectiveCoefficients();
+  if (Math.hypot(objective.x, objective.y) <= EPSILON) {
+    return baseView;
+  }
+
+  const visiblePolygon = clipPolygon(makeRectangle(baseView.xMin, baseView.xMax, baseView.yMin, baseView.yMax), halfPlanes);
+  const worldRadius = computeWorldRadius(baseView, halfPlanes);
+  const worldPolygon = clipPolygon(makeRectangle(-worldRadius, worldRadius, -worldRadius, worldRadius), halfPlanes);
+  const optimization = analyzeOptimization({
+    halfPlanes,
+    worldPolygon,
+    visiblePolygon,
+    view: baseView,
+    objective,
+  });
+
+  if (optimization.status !== "bounded" || !optimization.bestContacts.length) {
+    return baseView;
+  }
+
+  const currentLevel = toNumber(state.objective.level, 0);
+  const pointsToInclude = [...optimization.bestContacts];
+
+  if (Math.abs(currentLevel - optimization.bestValue) > 5e-4) {
+    optimization.bestContacts.forEach((point) => {
+      const projectedPoint = projectPointToObjectiveLevel(point, objective, currentLevel);
+      if (projectedPoint) {
+        pointsToInclude.push(projectedPoint);
+      }
+    });
+  }
+
+  return expandViewBoundsToIncludePoints(baseView, pointsToInclude);
+}
+
+function computeConstraintFitBounds(constraints) {
   const lines = constraints
     .map(convertConstraintToHalfPlane)
     .filter(Boolean)
@@ -2666,7 +2728,7 @@ function autoFitViewToConstraints(constraints) {
     Math.abs(point.y) <= 1e6
   );
   if (!finitePoints.length) {
-    return;
+    return null;
   }
 
   let minX = Math.min(...finitePoints.map((point) => point.x));
@@ -2674,29 +2736,75 @@ function autoFitViewToConstraints(constraints) {
   let minY = Math.min(...finitePoints.map((point) => point.y));
   let maxY = Math.max(...finitePoints.map((point) => point.y));
 
-  const spanX = Math.max(maxX - minX, 6);
-  const spanY = Math.max(maxY - minY, 6);
-  const paddingX = Math.max(spanX * 0.18, 1);
-  const paddingY = Math.max(spanY * 0.18, 1);
+  return padViewBounds({ xMin: minX, xMax: maxX, yMin: minY, yMax: maxY }, 0.18, 1);
+}
 
-  minX -= paddingX;
-  maxX += paddingX;
-  minY -= paddingY;
-  maxY += paddingY;
-
-  if (minX >= -EPSILON) {
-    minX = Math.min(0, minX);
-  }
-  if (minY >= -EPSILON) {
-    minY = Math.min(0, minY);
+function expandViewBoundsToIncludePoints(view, points) {
+  const finitePoints = points.filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y));
+  if (!finitePoints.length) {
+    return view;
   }
 
-  setViewWindow({
-    xMin: minX,
-    xMax: maxX,
-    yMin: minY,
-    yMax: maxY,
+  const nextBounds = {
+    xMin: view.xMin,
+    xMax: view.xMax,
+    yMin: view.yMin,
+    yMax: view.yMax,
+  };
+
+  finitePoints.forEach((point) => {
+    nextBounds.xMin = Math.min(nextBounds.xMin, point.x);
+    nextBounds.xMax = Math.max(nextBounds.xMax, point.x);
+    nextBounds.yMin = Math.min(nextBounds.yMin, point.y);
+    nextBounds.yMax = Math.max(nextBounds.yMax, point.y);
   });
+
+  return padViewBounds(nextBounds, 0.08, 0.6);
+}
+
+function padViewBounds(bounds, paddingRatio = 0.18, minimumPadding = 1) {
+  let { xMin, xMax, yMin, yMax } = bounds;
+  const spanX = Math.max(xMax - xMin, 6);
+  const spanY = Math.max(yMax - yMin, 6);
+  const paddingX = Math.max(spanX * paddingRatio, minimumPadding);
+  const paddingY = Math.max(spanY * paddingRatio, minimumPadding);
+
+  xMin -= paddingX;
+  xMax += paddingX;
+  yMin -= paddingY;
+  yMax += paddingY;
+
+  if (xMin >= -EPSILON) {
+    xMin = Math.min(0, xMin);
+  }
+  if (yMin >= -EPSILON) {
+    yMin = Math.min(0, yMin);
+  }
+
+  return { xMin, xMax, yMin, yMax };
+}
+
+function projectPointToObjectiveLevel(point, objective, targetLevel) {
+  const denominator = objective.x * objective.x + objective.y * objective.y;
+  if (denominator <= EPSILON) {
+    return null;
+  }
+
+  const currentLevel = evaluateObjective(point, objective);
+  const step = (targetLevel - currentLevel) / denominator;
+  return {
+    x: point.x + objective.x * step,
+    y: point.y + objective.y * step,
+  };
+}
+
+function getExampleViewWindow() {
+  return {
+    xMin: toNumber(EXAMPLE_PROBLEM.view.xMin, 0),
+    xMax: toNumber(EXAMPLE_PROBLEM.view.xMax, 10),
+    yMin: toNumber(EXAMPLE_PROBLEM.view.yMin, 0),
+    yMax: toNumber(EXAMPLE_PROBLEM.view.yMax, 10),
+  };
 }
 
 function convertConstraintToHalfPlane(constraint) {
