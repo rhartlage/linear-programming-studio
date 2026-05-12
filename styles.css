@@ -737,6 +737,10 @@ textarea:focus,
   color: var(--ink-soft);
 }
 
+#optimum-text {
+  white-space: pre-line;
+}
+
 .graph-head {
   align-items: end;
 }
@@ -760,47 +764,6 @@ textarea:focus,
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 244, 235, 0.82));
   border: 1px solid rgba(255, 255, 255, 0.65);
-}
-
-.plot-toolbar {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: fit-content;
-  padding: 8px 10px;
-  border-radius: 999px;
-  background: rgba(255, 252, 247, 0.92);
-  border: 1px solid rgba(22, 33, 51, 0.1);
-  box-shadow: 0 10px 28px rgba(20, 28, 44, 0.12);
-}
-
-.plot-toolbar-label {
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-
-.plot-tool-button {
-  width: 34px;
-  height: 34px;
-  border: 0;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 1.15rem;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--ink);
-  background: rgba(31, 122, 140, 0.12);
-  transition:
-    transform 0.16s ease,
-    background-color 0.16s ease;
-}
-
-.plot-tool-button:hover {
-  transform: translateY(-1px);
-  background: rgba(31, 122, 140, 0.2);
 }
 
 .plot-reset-button {

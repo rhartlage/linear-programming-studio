@@ -25,9 +25,9 @@ const PALETTE = [
   "#5F7B2D",
 ];
 const TABLE_SHEET_COLUMNS = [
-  { key: "name", label: "name", placeholder: "c1" },
-  { key: "xCoeff", label: "x coeff", placeholder: "1 or 1/2", inputMode: "text" },
-  { key: "yCoeff", label: "y coeff", placeholder: "2 or 3/4", inputMode: "text" },
+  { key: "name", label: "name", placeholder: "" },
+  { key: "xCoeff", label: "x coeff", placeholder: "Ex. 1 or 1/2", inputMode: "text" },
+  { key: "yCoeff", label: "y coeff", placeholder: "Ex. 1 or 1/2", inputMode: "text" },
   { key: "relation", label: "relation", options: ["", "<=", ">=", "="] },
   { key: "rhs", label: "rhs", placeholder: "8 or 5/2", inputMode: "text" },
 ];
@@ -67,8 +67,6 @@ const dom = {
   viewYMax: document.getElementById("view-y-max"),
   resetView: document.getElementById("reset-view"),
   resetViewInline: document.getElementById("reset-view-inline"),
-  zoomIn: document.getElementById("zoom-in"),
-  zoomOut: document.getElementById("zoom-out"),
   feasibilityBadge: document.getElementById("feasibility-badge"),
   feasibilityText: document.getElementById("feasibility-text"),
   objectiveBadge: document.getElementById("objective-badge"),
@@ -251,14 +249,6 @@ function bindStaticEvents() {
 
   dom.resetView.addEventListener("click", resetViewToDefault);
   dom.resetViewInline.addEventListener("click", resetViewToDefault);
-
-  dom.zoomIn.addEventListener("click", () => {
-    zoomView(ZOOM_IN_FACTOR);
-  });
-
-  dom.zoomOut.addEventListener("click", () => {
-    zoomView(ZOOM_OUT_FACTOR);
-  });
 
   dom.snapOptimum.addEventListener("click", () => {
     const analysis = getAnalysis();
@@ -968,14 +958,15 @@ function ensureTableSheetMinimumRows(minimumRows = MIN_TABLE_SHEET_ROWS) {
 }
 
 function appendTableSheetRow(values = {}) {
+  const rowIndex = dom.tableSheetBody.children.length;
   const row = document.createElement("div");
   row.className = "table-sheet-row";
-  row.dataset.rowIndex = String(dom.tableSheetBody.children.length);
+  row.dataset.rowIndex = String(rowIndex);
   row.setAttribute("role", "row");
 
   const indexCell = document.createElement("div");
   indexCell.className = "table-sheet-index";
-  indexCell.textContent = String(dom.tableSheetBody.children.length + 1);
+  indexCell.textContent = String(rowIndex + 1);
   row.appendChild(indexCell);
 
   TABLE_SHEET_COLUMNS.forEach((column) => {
@@ -998,12 +989,15 @@ function appendTableSheetRow(values = {}) {
       field.type = "text";
       field.inputMode = column.inputMode ?? "text";
       field.placeholder = column.placeholder ?? "";
-      field.value = String(values[column.key] ?? "");
+      const nextValue = column.key === "name"
+        ? (Object.hasOwn(values, column.key) ? values[column.key] : getDefaultTableRowName(rowIndex))
+        : (values[column.key] ?? "");
+      field.value = String(nextValue);
     }
 
     field.className = "table-sheet-field";
     field.dataset.colKey = column.key;
-    field.setAttribute("aria-label", `Constraint table ${column.label} row ${dom.tableSheetBody.children.length + 1}`);
+    field.setAttribute("aria-label", `Constraint table ${column.label} row ${rowIndex + 1}`);
     cell.appendChild(field);
     row.appendChild(cell);
   });
@@ -1021,11 +1015,12 @@ function getTableSheetRows() {
 }
 
 function readTableSheetRows() {
-  return getTableSheetRows().map((row) => {
+  return getTableSheetRows().map((row, index) => {
     const record = {};
     TABLE_SHEET_COLUMNS.forEach((column) => {
       record[column.key] = getTableSheetFieldValue(row, column.key);
     });
+    record.rowIndex = index;
     return record;
   });
 }
@@ -1035,7 +1030,13 @@ function getTableSheetFieldValue(row, columnKey) {
 }
 
 function rowHasTableValues(row) {
-  return TABLE_SHEET_COLUMNS.some((column) => getTableSheetFieldValue(row, column.key));
+  const rowIndex = Number(row.dataset.rowIndex ?? "0");
+  const nameValue = getTableSheetFieldValue(row, "name");
+  const hasCustomName = nameValue && nameValue !== getDefaultTableRowName(rowIndex);
+  const hasOtherValues = TABLE_SHEET_COLUMNS
+    .filter((column) => column.key !== "name")
+    .some((column) => getTableSheetFieldValue(row, column.key));
+  return hasCustomName || hasOtherValues;
 }
 
 function ensureTrailingBlankTableRow() {
@@ -1108,6 +1109,9 @@ function pasteIntoTableSheet(startField, pastedText) {
     }
 
     rowValues.forEach((value, columnOffset) => {
+      if (value === undefined) {
+        return;
+      }
       const column = TABLE_SHEET_COLUMNS[targetColumnIndex + columnOffset];
       if (!column) {
         return;
@@ -1160,7 +1164,7 @@ function mapPastedTableRow(row, columnMap) {
   return TABLE_SHEET_COLUMNS.map((column) => {
     const mappedIndex = columnMap[column.key];
     if (mappedIndex === undefined || mappedIndex === -1) {
-      return "";
+      return undefined;
     }
     return row[mappedIndex] ?? "";
   });
@@ -1205,7 +1209,9 @@ function parseConstraintTableRows(rows) {
     const xText = String(row.xCoeff ?? "").trim();
     const yText = String(row.yCoeff ?? "").trim();
     const rhsText = String(row.rhs ?? "").trim();
-    if (![name, relationText, xText, yText, rhsText].some(Boolean)) {
+    const hasOtherValues = [relationText, xText, yText, rhsText].some(Boolean);
+    const isGeneratedDefaultName = name === getDefaultTableRowName(row.rowIndex ?? index);
+    if (!hasOtherValues && (!name || isGeneratedDefaultName)) {
       return;
     }
 
@@ -1241,6 +1247,10 @@ function parseConstraintTableRows(rows) {
   });
 
   return { constraints, warnings, errors, rowCount };
+}
+
+function getDefaultTableRowName(rowIndex) {
+  return `c${Number(rowIndex) + 1}`;
 }
 
 function detectTableDelimiter(line) {
@@ -2011,11 +2021,11 @@ function renderStatuses(analysis) {
     case "bounded":
       if (analysis.optimization.bestContacts.length > 1) {
         setStatus(dom.optimumBadge, "Edge optimum", "success");
-        dom.optimumText.textContent = `${analysis.optimization.message} Drag the line until it first lands on that edge.`;
+        dom.optimumText.textContent = buildEdgeOptimumText(analysis.optimization);
       } else {
         const point = analysis.optimization.bestContacts[0];
         setStatus(dom.optimumBadge, "Vertex optimum", "success");
-        dom.optimumText.textContent = `${analysis.optimization.message} Best point: (${formatAnswerNumber(point.x)}, ${formatAnswerNumber(point.y)}).`;
+        dom.optimumText.textContent = buildVertexOptimumText(analysis.optimization.bestValue, point);
       }
       break;
     default:
@@ -2027,6 +2037,108 @@ function renderStatuses(analysis) {
 function setStatus(node, text, tone) {
   node.textContent = text;
   node.className = `status-badge ${tone}`;
+}
+
+function buildVertexOptimumText(bestValue, point) {
+  return [
+    `Optimal Value: ${formatResultValue(bestValue)}`,
+    `Optimal Point: ${formatResultPoint(point)}`,
+  ].join("\n");
+}
+
+function buildEdgeOptimumText(optimization) {
+  const contacts = sortOptimumPoints(optimization.bestContacts);
+  const [startPoint, endPoint] = contacts;
+  const xRangeText = formatResultRange(startPoint.x, endPoint.x);
+
+  const lines = [
+    `Optimal Value: ${formatResultValue(optimization.bestValue)}`,
+    'Optimal Point: N/A, there are multiple optimal solutions',
+    `Optimal x-range: ${xRangeText}`,
+  ];
+
+  if (Math.abs(startPoint.x - endPoint.x) <= EPSILON) {
+    lines.push(
+      `Optimal edge: x = ${formatResultPrimary(startPoint.x)}, with y ranging from ${formatResultRange(startPoint.y, endPoint.y)}`
+    );
+    return lines.join("\n");
+  }
+
+  lines.push(`Optimal edge: ${formatEdgeEquation(startPoint, endPoint)}`);
+  return lines.join("\n");
+}
+
+function sortOptimumPoints(points) {
+  return [...points].sort((left, right) => {
+    if (Math.abs(left.x - right.x) > EPSILON) {
+      return left.x - right.x;
+    }
+    return left.y - right.y;
+  });
+}
+
+function formatResultValue(value) {
+  return formatResultDualValue(value);
+}
+
+function formatResultPoint(point) {
+  const primaryText = `[${formatResultPrimary(point.x)}, ${formatResultPrimary(point.y)}]`;
+  const decimalText = `[${formatNumber(point.x)}, ${formatNumber(point.y)}]`;
+  return primaryText === decimalText
+    ? decimalText
+    : `${primaryText} or in decimal format ${decimalText}`;
+}
+
+function formatResultRange(a, b) {
+  const minimum = Math.min(a, b);
+  const maximum = Math.max(a, b);
+  const primaryText = `[${formatResultPrimary(minimum)}, ${formatResultPrimary(maximum)}]`;
+  const decimalText = `[${formatNumber(minimum)}, ${formatNumber(maximum)}]`;
+  return primaryText === decimalText
+    ? decimalText
+    : `${primaryText} or in decimal format ${decimalText}`;
+}
+
+function formatResultDualValue(value) {
+  const primaryText = formatResultPrimary(value);
+  const decimalText = formatNumber(value);
+  return primaryText === decimalText
+    ? decimalText
+    : `${primaryText} or in decimal format ${decimalText}`;
+}
+
+function formatResultPrimary(value) {
+  return formatFractionOnly(value) ?? formatNumber(value);
+}
+
+function formatEdgeEquation(startPoint, endPoint) {
+  const dx = endPoint.x - startPoint.x;
+  if (Math.abs(dx) <= EPSILON) {
+    return `x = ${formatResultPrimary(startPoint.x)}`;
+  }
+
+  const slope = (endPoint.y - startPoint.y) / dx;
+  const intercept = startPoint.y - slope * startPoint.x;
+  return `y = ${formatSlopeInterceptCompact(slope, intercept)}`;
+}
+
+function formatSlopeInterceptCompact(slope, intercept) {
+  if (Math.abs(slope) <= EPSILON) {
+    return formatResultPrimary(intercept);
+  }
+
+  const magnitude = Math.abs(slope);
+  const slopeLabel = Math.abs(magnitude - 1) <= EPSILON
+    ? "x"
+    : `${formatResultPrimary(magnitude)}x`;
+  const signedSlope = slope < 0 ? `-${slopeLabel}` : slopeLabel;
+
+  if (Math.abs(intercept) <= EPSILON) {
+    return signedSlope;
+  }
+
+  const sign = intercept >= 0 ? "+" : "-";
+  return `${signedSlope} ${sign} ${formatResultPrimary(Math.abs(intercept))}`;
 }
 
 function renderPlot(analysis) {
