@@ -59,96 +59,219 @@
               </button>
             </div>
 
-          <section class="card">
-            <div class="card-head compact">
-              <div>
-                <h3>Graph window</h3>
-                <p>Adjust the visible region if your polygon is off screen.</p>
+            <section class="card model-loader-card">
+              <div class="card-head compact">
+                <div>
+                  <h3>Load model</h3>
+                  <p>Paste a two-variable LP statement or a coefficient table, preview it, then load it into the graph.</p>
+                </div>
               </div>
-            </div>
 
-            <div class="form-grid view-grid">
-              <label>
-                <span>x min</span>
-                <input id="view-x-min" type="text" inputmode="decimal" value="0" />
-              </label>
-              <label>
-                <span>x max</span>
-                <input id="view-x-max" type="text" inputmode="decimal" value="10" />
-              </label>
-              <label>
-                <span>y min</span>
-                <input id="view-y-min" type="text" inputmode="decimal" value="0" />
-              </label>
-              <label>
-                <span>y max</span>
-                <input id="view-y-max" type="text" inputmode="decimal" value="10" />
-              </label>
-            </div>
-
-            <div class="button-row">
-              <button id="reset-view" class="button button-ghost" type="button">
-                Reset view
-              </button>
-            </div>
-          </section>
-
-          <section class="card objective-card">
-            <div class="card-head">
-              <div>
-                <h3>Objective function</h3>
-                <p>Drag the amber midpoint to move it in parallel, or drag an endpoint to change its slope.</p>
+              <div class="loader-tab-row" role="tablist" aria-label="Model loader modes">
+                <button
+                  id="model-tab-statement"
+                  class="tab-button is-active"
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="model-panel-statement"
+                  data-loader-tab="statement"
+                >
+                  Problem statement
+                </button>
+                <button
+                  id="model-tab-table"
+                  class="tab-button"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="model-panel-table"
+                  data-loader-tab="table"
+                >
+                  Coefficient table
+                </button>
               </div>
-            </div>
 
-            <div class="form-grid objective-grid">
-              <label>
-                <span>Mode</span>
-                <select id="objective-mode">
-                  <option value="max">Maximize</option>
-                  <option value="min">Minimize</option>
-                </select>
-              </label>
-              <label>
-                <span>Slope m</span>
-                <input id="objective-x" type="text" inputmode="decimal" value="0.75" />
-              </label>
-              <label>
-                <span>Intercept b</span>
-                <input id="objective-y" type="text" inputmode="decimal" value="1" />
-              </label>
-              <label>
-                <span>Level z</span>
-                <input id="objective-level" type="text" inputmode="decimal" value="2" />
-              </label>
-            </div>
-
-            <div class="button-row">
-              <button id="snap-optimum" class="button button-secondary" type="button">
-                Snap objective to optimum
-              </button>
-            </div>
-          </section>
-
-          <section class="card">
-            <div class="card-head">
-              <div>
-                <h3>Constraints</h3>
-                <p>Add lines and half-planes to define the feasible set.</p>
+              <div
+                id="model-panel-statement"
+                class="model-loader-panel"
+                role="tabpanel"
+                aria-labelledby="model-tab-statement"
+              >
+                <label class="loader-textarea-label">
+                  <span>Problem statement</span>
+                  <textarea
+                    id="statement-input"
+                    rows="8"
+                    placeholder="Max 5A + 9B&#10;s.t.&#10;1A + 2B <= 8&#10;7A + 5B <= 35&#10;A,B >= 0"
+                  ></textarea>
+                </label>
+                <p class="loader-note">Use a standard two-variable LP format with `Max` or `Min`, one constraint per line, and optional nonnegativity such as `A,B >= 0`.</p>
               </div>
-              <button id="add-constraint" class="button button-primary" type="button">
-                Add constraint
-              </button>
-            </div>
 
-            <div id="constraint-list" class="constraint-list" aria-live="polite"></div>
+              <div
+                id="model-panel-table"
+                class="model-loader-panel is-hidden"
+                role="tabpanel"
+                aria-labelledby="model-tab-table"
+                hidden
+              >
+                <div class="form-grid table-loader-objective-grid">
+                  <label>
+                    <span>Objective mode</span>
+                    <select id="table-objective-mode">
+                      <option value="max">Maximize</option>
+                      <option value="min">Minimize</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>x coeff</span>
+                    <input id="table-objective-x" type="text" inputmode="decimal" placeholder="5" />
+                  </label>
+                  <label>
+                    <span>y coeff</span>
+                    <input id="table-objective-y" type="text" inputmode="decimal" placeholder="9" />
+                  </label>
+                </div>
 
-            <div class="button-row">
-              <button id="clear-constraints" class="button button-ghost" type="button">
-                Clear all
-              </button>
-            </div>
-          </section>
+                <label class="loader-textarea-label">
+                  <span>Constraint table</span>
+                  <textarea
+                    id="table-constraints-input"
+                    rows="8"
+                    placeholder="name	x coeff	y coeff	relation	rhs&#10;c1	1	2	<=	8&#10;c2	7	5	<=	35"
+                  ></textarea>
+                </label>
+
+                <label class="loader-inline-toggle">
+                  <input id="table-default-nonnegative" type="checkbox" checked />
+                  <span>Add `x >= 0` and `y >= 0` if they are not already listed</span>
+                </label>
+
+                <p class="loader-note">Paste rows copied from Excel or Google Sheets with columns: `name`, `x coeff`, `y coeff`, `relation`, and `rhs`.</p>
+              </div>
+
+              <div class="form-grid model-load-grid">
+                <label>
+                  <span>When loading</span>
+                  <select id="model-load-strategy">
+                    <option value="replace">Replace current model</option>
+                    <option value="append">Append constraints</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="button-row">
+                <button id="preview-model" class="button button-secondary" type="button">
+                  Preview model
+                </button>
+                <button id="apply-model" class="button button-primary" type="button">
+                  Load into graph
+                </button>
+                <button id="clear-model-input" class="button button-ghost" type="button">
+                  Clear loader
+                </button>
+              </div>
+
+              <div class="model-preview" aria-live="polite">
+                <div class="model-preview-summary">
+                  <strong id="model-preview-badge" class="status-badge neutral">Waiting</strong>
+                  <p id="model-preview-text">Paste a model and click Preview model before loading it into the graph.</p>
+                </div>
+                <div id="model-preview-details" class="model-preview-details"></div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head compact">
+                <div>
+                  <h3>Graph window</h3>
+                  <p>Adjust the visible region if your polygon is off screen.</p>
+                </div>
+              </div>
+
+              <div class="form-grid view-grid">
+                <label>
+                  <span>x min</span>
+                  <input id="view-x-min" type="text" inputmode="decimal" value="0" />
+                </label>
+                <label>
+                  <span>x max</span>
+                  <input id="view-x-max" type="text" inputmode="decimal" value="10" />
+                </label>
+                <label>
+                  <span>y min</span>
+                  <input id="view-y-min" type="text" inputmode="decimal" value="0" />
+                </label>
+                <label>
+                  <span>y max</span>
+                  <input id="view-y-max" type="text" inputmode="decimal" value="10" />
+                </label>
+              </div>
+
+              <div class="button-row">
+                <button id="reset-view" class="button button-ghost" type="button">
+                  Reset view
+                </button>
+              </div>
+            </section>
+
+            <section class="card objective-card">
+              <div class="card-head">
+                <div>
+                  <h3>Objective function</h3>
+                  <p>Drag the amber midpoint to move it in parallel, or drag an endpoint to change its slope.</p>
+                </div>
+              </div>
+
+              <div class="form-grid objective-grid">
+                <label>
+                  <span>Mode</span>
+                  <select id="objective-mode">
+                    <option value="max">Maximize</option>
+                    <option value="min">Minimize</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Slope m</span>
+                  <input id="objective-x" type="text" inputmode="decimal" value="0.75" />
+                </label>
+                <label>
+                  <span>Intercept b</span>
+                  <input id="objective-y" type="text" inputmode="decimal" value="1" />
+                </label>
+                <label>
+                  <span>Level z</span>
+                  <input id="objective-level" type="text" inputmode="decimal" value="2" />
+                </label>
+              </div>
+
+              <div class="button-row">
+                <button id="snap-optimum" class="button button-secondary" type="button">
+                  Snap objective to optimum
+                </button>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <div>
+                  <h3>Constraints</h3>
+                  <p>Add lines and half-planes to define the feasible set.</p>
+                </div>
+                <button id="add-constraint" class="button button-primary" type="button">
+                  Add constraint
+                </button>
+              </div>
+
+              <div id="constraint-list" class="constraint-list" aria-live="polite"></div>
+
+              <div class="button-row">
+                <button id="clear-constraints" class="button button-ghost" type="button">
+                  Clear all
+                </button>
+              </div>
+            </section>
           </section>
         </div>
 

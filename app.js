@@ -29,6 +29,23 @@ const dom = {
   constraintList: document.getElementById("constraint-list"),
   addConstraint: document.getElementById("add-constraint"),
   loadExample: document.getElementById("load-example"),
+  modelTabStatement: document.getElementById("model-tab-statement"),
+  modelTabTable: document.getElementById("model-tab-table"),
+  modelPanelStatement: document.getElementById("model-panel-statement"),
+  modelPanelTable: document.getElementById("model-panel-table"),
+  statementInput: document.getElementById("statement-input"),
+  tableObjectiveMode: document.getElementById("table-objective-mode"),
+  tableObjectiveX: document.getElementById("table-objective-x"),
+  tableObjectiveY: document.getElementById("table-objective-y"),
+  tableConstraintsInput: document.getElementById("table-constraints-input"),
+  tableDefaultNonnegative: document.getElementById("table-default-nonnegative"),
+  modelLoadStrategy: document.getElementById("model-load-strategy"),
+  previewModel: document.getElementById("preview-model"),
+  applyModel: document.getElementById("apply-model"),
+  clearModelInput: document.getElementById("clear-model-input"),
+  modelPreviewBadge: document.getElementById("model-preview-badge"),
+  modelPreviewText: document.getElementById("model-preview-text"),
+  modelPreviewDetails: document.getElementById("model-preview-details"),
   clearConstraints: document.getElementById("clear-constraints"),
   objectiveMode: document.getElementById("objective-mode"),
   objectiveX: document.getElementById("objective-x"),
@@ -91,11 +108,14 @@ const state = {
 let analysisCache = null;
 let dragState = null;
 let nextConstraintId = 1;
+let activeLoaderTab = "statement";
+let modelPreview = null;
 
 initialize();
 
 function initialize() {
   bindStaticEvents();
+  initializeModelLoader();
   loadExampleProblem();
 }
 
@@ -105,7 +125,67 @@ function resetViewToDefault() {
   refresh();
 }
 
+function initializeModelLoader() {
+  setActiveLoaderTab(activeLoaderTab);
+  renderModelPreview(null);
+}
+
+function setActiveLoaderTab(tab) {
+  activeLoaderTab = tab === "table" ? "table" : "statement";
+  const isStatement = activeLoaderTab === "statement";
+
+  dom.modelTabStatement.classList.toggle("is-active", isStatement);
+  dom.modelTabStatement.setAttribute("aria-selected", String(isStatement));
+  dom.modelPanelStatement.classList.toggle("is-hidden", !isStatement);
+  dom.modelPanelStatement.hidden = !isStatement;
+
+  dom.modelTabTable.classList.toggle("is-active", !isStatement);
+  dom.modelTabTable.setAttribute("aria-selected", String(!isStatement));
+  dom.modelPanelTable.classList.toggle("is-hidden", isStatement);
+  dom.modelPanelTable.hidden = isStatement;
+
+  invalidateModelPreview("Preview the active loader tab before loading it into the graph.");
+}
+
+function invalidateModelPreview(message = "Preview is out of date. Click Preview model to refresh it.") {
+  modelPreview = null;
+  renderModelPreview(null, message);
+}
+
 function bindStaticEvents() {
+  [dom.modelTabStatement, dom.modelTabTable].forEach((button) => {
+    button.addEventListener("click", () => {
+      setActiveLoaderTab(button.dataset.loaderTab);
+    });
+  });
+
+  [
+    dom.statementInput,
+    dom.tableObjectiveMode,
+    dom.tableObjectiveX,
+    dom.tableObjectiveY,
+    dom.tableConstraintsInput,
+    dom.tableDefaultNonnegative,
+    dom.modelLoadStrategy,
+  ].forEach((control) => {
+    const eventName = control.tagName === "SELECT" || control.type === "checkbox" ? "change" : "input";
+    control.addEventListener(eventName, () => {
+      invalidateModelPreview();
+    });
+  });
+
+  dom.previewModel.addEventListener("click", () => {
+    previewCurrentModel();
+  });
+
+  dom.applyModel.addEventListener("click", () => {
+    loadPreviewIntoGraph();
+  });
+
+  dom.clearModelInput.addEventListener("click", () => {
+    clearModelLoader();
+  });
+
   dom.addConstraint.addEventListener("click", () => {
     state.constraints.push(createConstraint());
     renderConstraintList();
@@ -570,6 +650,765 @@ function midpointWorld(start, end) {
     x: (start.x + end.x) / 2,
     y: (start.y + end.y) / 2,
   };
+}
+
+function previewCurrentModel() {
+  const preview = activeLoaderTab === "statement"
+    ? parseStatementModel(dom.statementInput.value)
+    : parseTableModel();
+
+  modelPreview = preview;
+  renderModelPreview(preview);
+  return preview;
+}
+
+function loadPreviewIntoGraph() {
+  const preview = modelPreview ?? previewCurrentModel();
+  if (!preview || (!preview.constraints.length && !preview.objective)) {
+    return;
+  }
+
+  applyParsedModel(preview);
+  modelPreview = {
+    ...preview,
+    wasLoaded: true,
+  };
+  renderModelPreview(modelPreview);
+}
+
+function clearModelLoader() {
+  dom.statementInput.value = "";
+  dom.tableObjectiveMode.value = "max";
+  dom.tableObjectiveX.value = "";
+  dom.tableObjectiveY.value = "";
+  dom.tableConstraintsInput.value = "";
+  dom.tableDefaultNonnegative.checked = true;
+  dom.modelLoadStrategy.value = "replace";
+  modelPreview = null;
+  renderModelPreview(null);
+}
+
+function applyParsedModel(preview) {
+  const loadStrategy = dom.modelLoadStrategy.value;
+  const nextConstraints = preview.constraints.map((constraint) => createConstraint(constraint));
+
+  if (loadStrategy === "replace") {
+    state.constraints = nextConstraints;
+  } else {
+    state.constraints.push(...nextConstraints);
+  }
+
+  if (preview.objective) {
+    state.objective.mode = preview.objective.mode;
+    state.objective.xCoeff = formatNumber(preview.objective.xCoeff);
+    state.objective.yCoeff = formatNumber(preview.objective.yCoeff);
+    state.objective.level = preview.objective.level ?? 0;
+  }
+
+  if (state.constraints.length) {
+    autoFitViewToConstraints(state.constraints);
+  }
+
+  renderConstraintList();
+  clampObjectiveToFeasibleRange();
+  syncObjectiveInputs();
+  syncViewInputs();
+  refresh();
+}
+
+function renderModelPreview(preview, idleMessage = "Paste a model and click Preview model before loading it into the graph.") {
+  dom.modelPreviewDetails.innerHTML = "";
+
+  if (!preview) {
+    dom.modelPreviewBadge.textContent = "Waiting";
+    dom.modelPreviewBadge.className = "status-badge neutral";
+    dom.modelPreviewText.textContent = idleMessage;
+    dom.applyModel.disabled = true;
+    return;
+  }
+
+  const loadable = Boolean(preview.constraints.length || preview.objective);
+  const tone = !loadable && !preview.errors.length && !preview.warnings.length
+    ? "neutral"
+    : (!loadable && preview.errors.length
+      ? "danger"
+      : (preview.errors.length || preview.warnings.length ? "warning" : "success"));
+  const badgeText = tone === "neutral"
+    ? "Waiting"
+    : (preview.wasLoaded
+    ? "Loaded"
+    : (tone === "success" ? "Ready" : tone === "warning" ? "Check" : "Fix input"));
+
+  dom.modelPreviewBadge.textContent = badgeText;
+  dom.modelPreviewBadge.className = `status-badge ${tone}`;
+  dom.modelPreviewText.textContent = tone === "neutral"
+    ? "Add a statement or some table rows, then click Preview model."
+    : buildModelPreviewMessage(preview);
+  dom.applyModel.disabled = !loadable;
+
+  const sections = [];
+
+  if (preview.variableSummary && (loadable || preview.errors.length || preview.warnings.length)) {
+    sections.push(`
+      <section class="model-preview-section">
+        <h4>Variable mapping</h4>
+        <p class="model-preview-message">${escapeHtml(preview.variableSummary)}</p>
+      </section>
+    `);
+  }
+
+  if (preview.objective) {
+    sections.push(`
+      <section class="model-preview-section">
+        <h4>Objective</h4>
+        <p class="model-preview-message">${escapeHtml(formatObjectiveSummary(preview.objective))}</p>
+      </section>
+    `);
+  }
+
+  if (preview.constraints.length) {
+    const constraintMarkup = preview.constraints
+      .map((constraint) => {
+        const label = constraint.name.trim() ? `${constraint.name.trim()}: ` : "";
+        return `<li>${escapeHtml(label + describeConstraint(constraint))}</li>`;
+      })
+      .join("");
+    sections.push(`
+      <section class="model-preview-section">
+        <h4>Parsed constraints</h4>
+        <ol class="model-preview-list">${constraintMarkup}</ol>
+      </section>
+    `);
+  }
+
+  if (preview.warnings.length) {
+    sections.push(`
+      <section class="model-preview-section">
+        <h4>Warnings</h4>
+        <ul class="model-preview-list">${preview.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>
+      </section>
+    `);
+  }
+
+  if (preview.errors.length) {
+    sections.push(`
+      <section class="model-preview-section">
+        <h4>Could not parse</h4>
+        <ul class="model-preview-list">${preview.errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}</ul>
+      </section>
+    `);
+  }
+
+  dom.modelPreviewDetails.innerHTML = sections.join("");
+}
+
+function buildModelPreviewMessage(preview) {
+  const action = preview.wasLoaded ? "Loaded" : "Ready to load";
+  const constraintCount = preview.constraints.length;
+  let base = "I could not build a graph-ready model from this input yet.";
+
+  if (constraintCount && preview.objective) {
+    base = `${action} ${constraintCount} constraint${constraintCount === 1 ? "" : "s"} and update the objective.`;
+  } else if (constraintCount) {
+    base = `${action} ${constraintCount} constraint${constraintCount === 1 ? "" : "s"} while keeping the current objective.`;
+  } else if (preview.objective) {
+    base = `${action} the objective without changing the current constraints.`;
+  }
+
+  if (preview.errors.length) {
+    return `${base} ${preview.errors.length} item${preview.errors.length === 1 ? "" : "s"} still need attention.`;
+  }
+
+  if (preview.warnings.length) {
+    return `${base} ${preview.warnings.length} note${preview.warnings.length === 1 ? "" : "s"} may need review.`;
+  }
+
+  return base;
+}
+
+function parseStatementModel(text) {
+  const normalizedText = normalizeStatementText(text);
+  const lines = normalizedText
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const { variableMap, variableSummary, warnings: variableWarnings } = inferVariableMap(lines);
+  const warnings = [...variableWarnings];
+  const errors = [];
+  const constraints = [];
+  let objective = null;
+
+  lines.forEach((line) => {
+    if (isIgnorableStatementLine(line)) {
+      return;
+    }
+
+    if (!objective) {
+      const parsedObjective = parseStatementObjectiveLine(line, variableMap);
+      if (parsedObjective) {
+        objective = parsedObjective;
+        return;
+      }
+    }
+
+    const parsedConstraint = parseStatementConstraintLine(line, variableMap);
+    if (parsedConstraint.constraints.length) {
+      constraints.push(...parsedConstraint.constraints);
+      warnings.push(...parsedConstraint.warnings);
+      return;
+    }
+
+    errors.push(line);
+  });
+
+  if (!objective) {
+    warnings.push("No objective was detected. Loading this preview will keep the current objective.");
+  }
+
+  if (!constraints.length && !objective && !normalizedText.trim()) {
+    warnings.length = 0;
+  }
+
+  return {
+    source: "statement",
+    objective,
+    constraints,
+    warnings,
+    errors,
+    variableSummary,
+  };
+}
+
+function parseTableModel() {
+  const warnings = [];
+  const errors = [];
+  const constraints = [];
+  const parsedObjective = parseTableObjective();
+  const tableText = dom.tableConstraintsInput.value.trim();
+
+  if (parsedObjective.error) {
+    errors.push(parsedObjective.error);
+  }
+
+  const objective = parsedObjective.objective;
+  const tableResult = parseConstraintTable(tableText);
+  constraints.push(...tableResult.constraints);
+  warnings.push(...tableResult.warnings);
+  errors.push(...tableResult.errors);
+
+  if (dom.tableDefaultNonnegative.checked && tableResult.constraints.length) {
+    if (!hasAxisNonnegativeConstraint(constraints, "x")) {
+      constraints.push({
+        name: "",
+        type: "x_geq",
+        param1: "0",
+        param2: "0",
+        enabled: true,
+      });
+      warnings.push("Added x >= 0 because it was not listed in the table.");
+    }
+    if (!hasAxisNonnegativeConstraint(constraints, "y")) {
+      constraints.push({
+        name: "",
+        type: "y_geq",
+        param1: "0",
+        param2: "0",
+        enabled: true,
+      });
+      warnings.push("Added y >= 0 because it was not listed in the table.");
+    }
+  }
+
+  if (!objective) {
+    warnings.push("No table objective was provided. Loading this preview will keep the current objective.");
+  }
+
+  if (!objective && !tableText) {
+    warnings.length = 0;
+  }
+
+  return {
+    source: "table",
+    objective,
+    constraints,
+    warnings,
+    errors,
+    variableSummary: "Table columns map directly to x and y.",
+  };
+}
+
+function parseTableObjective() {
+  const xText = dom.tableObjectiveX.value.trim();
+  const yText = dom.tableObjectiveY.value.trim();
+  if (!xText && !yText) {
+    return { objective: null, error: null };
+  }
+
+  const xCoeff = parseFlexibleNumber(xText || "0");
+  const yCoeff = parseFlexibleNumber(yText || "0");
+  if (!Number.isFinite(xCoeff) || !Number.isFinite(yCoeff)) {
+    return {
+      objective: null,
+      error: "The table objective row needs valid numeric x and y coefficients.",
+    };
+  }
+
+  return {
+    objective: {
+      mode: dom.tableObjectiveMode.value,
+      xCoeff,
+      yCoeff,
+      level: 0,
+    },
+    error: null,
+  };
+}
+
+function parseConstraintTable(text) {
+  const lines = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const warnings = [];
+  const errors = [];
+  const constraints = [];
+
+  if (!lines.length) {
+    return { constraints, warnings, errors };
+  }
+
+  const delimiter = detectTableDelimiter(lines[0]);
+  const firstRow = splitDelimitedRow(lines[0], delimiter);
+  let columnMap = buildTableColumnMap(firstRow);
+  let startIndex = 1;
+
+  if (!columnMap) {
+    if (firstRow.length >= 4) {
+      columnMap = firstRow.length >= 5
+        ? { name: 0, xCoeff: 1, yCoeff: 2, relation: 3, rhs: 4 }
+        : { name: -1, xCoeff: 0, yCoeff: 1, relation: 2, rhs: 3 };
+      startIndex = 0;
+      warnings.push(
+        firstRow.length >= 5
+          ? "No header row was detected, so the table was read as name, x coeff, y coeff, relation, rhs."
+          : "No header row was detected, so the table was read as x coeff, y coeff, relation, rhs."
+      );
+    } else {
+      errors.push("The coefficient table needs either a header row or rows with at least four columns.");
+      return { constraints, warnings, errors };
+    }
+  }
+
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const row = splitDelimitedRow(lines[index], delimiter);
+    if (!row.some((value) => value.trim())) {
+      continue;
+    }
+
+    const name = (row[columnMap.name] ?? "").trim();
+    const relation = normalizeRelationOperator((row[columnMap.relation] ?? "").trim());
+    const xCoeff = parseFlexibleNumber(row[columnMap.xCoeff] ?? "");
+    const yCoeff = parseFlexibleNumber(row[columnMap.yCoeff] ?? "");
+    const rhs = parseFlexibleNumber(row[columnMap.rhs] ?? "");
+
+    if (!relation || !["<=", ">=", "="].includes(relation)) {
+      errors.push(`Row ${index + 1}: relation must be <=, >=, or =.`);
+      continue;
+    }
+    if (!Number.isFinite(xCoeff) || !Number.isFinite(yCoeff) || !Number.isFinite(rhs)) {
+      errors.push(`Row ${index + 1}: x coeff, y coeff, and rhs must all be numeric.`);
+      continue;
+    }
+
+    const converted = convertRelationToConstraintSeeds({
+      name,
+      xCoeff,
+      yCoeff,
+      relation,
+      rhs,
+    });
+
+    if (!converted.length) {
+      errors.push(`Row ${index + 1}: the coefficients do not define a usable 2D constraint.`);
+      continue;
+    }
+
+    constraints.push(...converted);
+  }
+
+  return { constraints, warnings, errors };
+}
+
+function detectTableDelimiter(line) {
+  if (line.includes("\t")) {
+    return "\t";
+  }
+  if (line.includes(",")) {
+    return ",";
+  }
+  return /\s{2,}/;
+}
+
+function splitDelimitedRow(line, delimiter) {
+  if (delimiter instanceof RegExp) {
+    return line.split(delimiter).map((part) => part.trim());
+  }
+  return line.split(delimiter).map((part) => part.trim());
+}
+
+function buildTableColumnMap(headerRow) {
+  const normalizedHeaders = headerRow.map((header) => normalizeTableHeader(header));
+  const findIndex = (aliases) => normalizedHeaders.findIndex((header) => aliases.includes(header));
+  const columnMap = {
+    name: findIndex(["name", "constraint", "label"]),
+    xCoeff: findIndex(["xcoeff", "xcoefficient", "x", "ax", "coeffx"]),
+    yCoeff: findIndex(["ycoeff", "ycoefficient", "y", "by", "coeffy"]),
+    relation: findIndex(["relation", "operator", "sign", "op"]),
+    rhs: findIndex(["rhs", "bound", "value", "constant"]),
+  };
+
+  if (columnMap.xCoeff === -1 || columnMap.yCoeff === -1 || columnMap.relation === -1 || columnMap.rhs === -1) {
+    return null;
+  }
+
+  return columnMap;
+}
+
+function normalizeTableHeader(header) {
+  return String(header).toLowerCase().replace(/[^a-z]/g, "");
+}
+
+function hasAxisNonnegativeConstraint(constraints, axis) {
+  return constraints.some((constraint) => {
+    if (axis === "x" && constraint.type === "x_geq") {
+      return Math.abs(toNumber(constraint.param1, 0)) <= EPSILON;
+    }
+    if (axis === "y" && constraint.type === "y_geq") {
+      return Math.abs(toNumber(constraint.param1, 0)) <= EPSILON;
+    }
+    return false;
+  });
+}
+
+function normalizeStatementText(text) {
+  return String(text)
+    .replace(/\r/g, "\n")
+    .replace(/[≤⩽]/g, "<=")
+    .replace(/[≥⩾]/g, ">=")
+    .replace(/[−–—]/g, "-")
+    .replace(/[×]/g, "*")
+    .replace(/\u00bc/g, "1/4")
+    .replace(/\u00bd/g, "1/2")
+    .replace(/\u00be/g, "3/4")
+    .replace(/\u2150/g, "1/7")
+    .replace(/\u2151/g, "1/9")
+    .replace(/\u2152/g, "1/10")
+    .replace(/\u2153/g, "1/3")
+    .replace(/\u2154/g, "2/3")
+    .replace(/\u2155/g, "1/5")
+    .replace(/\u2156/g, "2/5")
+    .replace(/\u2157/g, "3/5")
+    .replace(/\u2158/g, "4/5")
+    .replace(/\u2159/g, "1/6")
+    .replace(/\u215a/g, "5/6")
+    .replace(/\b(?:s\.?\s*t\.?|subject to)\b/gi, "\nsubject to\n")
+    .replace(/;/g, "\n");
+}
+
+function inferVariableMap(lines) {
+  const tokens = [];
+  const ignored = new Set([
+    "MAX",
+    "MAXIMIZE",
+    "MIN",
+    "MINIMIZE",
+    "SUBJECT",
+    "TO",
+    "ST",
+    "SUCH",
+    "THAT",
+    "CONSTRAINT",
+    "CONSTRAINTS",
+    "OBJ",
+    "OBJECTIVE",
+    "FUNCTION",
+    "STATEMENT",
+    "Z",
+  ]);
+
+  lines.forEach((line) => {
+    const matches = line.match(/[A-Za-z][A-Za-z0-9_]*/g) ?? [];
+    matches.forEach((token) => {
+      const upperToken = token.toUpperCase();
+      if (!ignored.has(upperToken)) {
+        tokens.push(token);
+      }
+    });
+  });
+
+  const uniqueTokens = [];
+  tokens.forEach((token) => {
+    if (!uniqueTokens.some((candidate) => candidate.toUpperCase() === token.toUpperCase())) {
+      uniqueTokens.push(token);
+    }
+  });
+
+  const warnings = [];
+  if (uniqueTokens.length > 2) {
+    warnings.push(`Only two decision variables can be graphed here, so I mapped ${uniqueTokens[0]} to x and ${uniqueTokens[1]} to y.`);
+  }
+
+  const firstVariable = uniqueTokens[0] ?? "x";
+  const secondVariable = uniqueTokens[1] ?? "y";
+  const variableMap = {
+    [firstVariable]: "x",
+    [secondVariable]: "y",
+  };
+
+  return {
+    variableMap,
+    variableSummary: `${firstVariable} -> x, ${secondVariable} -> y`,
+    warnings,
+  };
+}
+
+function isIgnorableStatementLine(line) {
+  return /^(subject to|constraints?|such that)$/i.test(line.trim());
+}
+
+function parseStatementObjectiveLine(line, variableMap) {
+  const match = line.match(/^(?:.*?[-:]\s*)?(max(?:imize)?|min(?:imize)?)\s*:?\s*(.+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const mode = /^min/i.test(match[1]) ? "min" : "max";
+  const expression = match[2].replace(/^(?:z|obj(?:ective)?)\s*=\s*/i, "").trim();
+  const parsed = parseLinearExpression(expression, variableMap);
+  if (!parsed) {
+    return null;
+  }
+
+  return {
+    mode,
+    xCoeff: parsed.x,
+    yCoeff: parsed.y,
+    level: 0,
+  };
+}
+
+function parseStatementConstraintLine(line, variableMap) {
+  const warnings = [];
+  const pairMatch = line.match(/^([A-Za-z][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_]*)+)\s*(<=|>=|=|<|>)\s*(.+)$/i);
+  if (pairMatch) {
+    const variableList = pairMatch[1].split(",").map((item) => item.trim()).filter(Boolean);
+    const expandedConstraints = variableList.flatMap((variableName) =>
+      parseStatementConstraintLine(`${variableName} ${pairMatch[2]} ${pairMatch[3]}`, variableMap).constraints
+    );
+    return { constraints: expandedConstraints, warnings };
+  }
+
+  const operatorMatch = line.match(/(<=|>=|=|<|>)/);
+  if (!operatorMatch) {
+    return { constraints: [], warnings };
+  }
+
+  const operator = normalizeRelationOperator(operatorMatch[1]);
+  const operatorIndex = line.indexOf(operatorMatch[1]);
+  const leftExpression = parseLinearExpression(line.slice(0, operatorIndex), variableMap);
+  const rightExpression = parseLinearExpression(line.slice(operatorIndex + operatorMatch[1].length), variableMap);
+  if (!leftExpression || !rightExpression) {
+    return { constraints: [], warnings };
+  }
+
+  const normalizedRelation = {
+    name: "",
+    xCoeff: leftExpression.x - rightExpression.x,
+    yCoeff: leftExpression.y - rightExpression.y,
+    relation: operator,
+    rhs: rightExpression.constant - leftExpression.constant,
+  };
+
+  return {
+    constraints: convertRelationToConstraintSeeds(normalizedRelation),
+    warnings,
+  };
+}
+
+function convertRelationToConstraintSeeds({ name, xCoeff, yCoeff, relation, rhs }) {
+  if (Math.abs(xCoeff) <= EPSILON && Math.abs(yCoeff) <= EPSILON) {
+    return [];
+  }
+
+  if (relation === "=") {
+    const names = buildConstraintNameVariants(name, 2);
+    return [
+      ...convertRelationToConstraintSeeds({ name: names[0], xCoeff, yCoeff, relation: "<=", rhs }),
+      ...convertRelationToConstraintSeeds({ name: names[1], xCoeff, yCoeff, relation: ">=", rhs }),
+    ];
+  }
+
+  if (Math.abs(yCoeff) <= EPSILON) {
+    const bound = rhs / xCoeff;
+    return [{
+      name: name.trim(),
+      type: relation === "<="
+        ? (xCoeff > 0 ? "x_leq" : "x_geq")
+        : (xCoeff > 0 ? "x_geq" : "x_leq"),
+      param1: formatNumber(bound),
+      param2: "0",
+      enabled: true,
+    }];
+  }
+
+  if (Math.abs(xCoeff) <= EPSILON) {
+    const bound = rhs / yCoeff;
+    return [{
+      name: name.trim(),
+      type: relation === "<="
+        ? (yCoeff > 0 ? "y_leq" : "y_geq")
+        : (yCoeff > 0 ? "y_geq" : "y_leq"),
+      param1: formatNumber(bound),
+      param2: "0",
+      enabled: true,
+    }];
+  }
+
+  const slope = -xCoeff / yCoeff;
+  const intercept = rhs / yCoeff;
+  return [{
+    name: name.trim(),
+    type: relation === "<="
+      ? (yCoeff > 0 ? "line_leq" : "line_geq")
+      : (yCoeff > 0 ? "line_geq" : "line_leq"),
+    param1: formatNumber(slope),
+    param2: formatNumber(intercept),
+    enabled: true,
+  }];
+}
+
+function buildConstraintNameVariants(baseName, count) {
+  if (!baseName.trim()) {
+    return new Array(count).fill("");
+  }
+  return Array.from({ length: count }, (_, index) => `${baseName.trim()}${String.fromCharCode(97 + index)}`);
+}
+
+function parseLinearExpression(expression, variableMap) {
+  const compact = String(expression)
+    .replace(/\s+/g, "")
+    .replace(/[−–—]/g, "-")
+    .replace(/\*/g, "")
+    .replace(/,/g, "");
+
+  if (!compact) {
+    return null;
+  }
+
+  const normalized = /^[+-]/.test(compact) ? compact : `+${compact}`;
+  const terms = normalized.match(/[+-][^+-]+/g);
+  if (!terms) {
+    return null;
+  }
+
+  const parsed = { x: 0, y: 0, constant: 0 };
+  const orderedEntries = Object.entries(variableMap).sort((first, second) => second[0].length - first[0].length);
+
+  for (const term of terms) {
+    const variableEntry = orderedEntries.find(([sourceVariable]) => new RegExp(escapeRegex(sourceVariable), "i").test(term));
+    if (!variableEntry) {
+      const constant = parseFlexibleNumber(term);
+      if (!Number.isFinite(constant)) {
+        return null;
+      }
+      parsed.constant += constant;
+      continue;
+    }
+
+    const [sourceVariable, targetVariable] = variableEntry;
+    const coefficientText = term.replace(new RegExp(escapeRegex(sourceVariable), "ig"), "");
+    let coefficient = 1;
+
+    if (coefficientText && coefficientText !== "+") {
+      coefficient = coefficientText === "-" ? -1 : parseFlexibleNumber(coefficientText);
+    }
+
+    if (!Number.isFinite(coefficient)) {
+      return null;
+    }
+
+    parsed[targetVariable] += coefficient;
+  }
+
+  return parsed;
+}
+
+function parseFlexibleNumber(value) {
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return Number.NaN;
+  }
+
+  const fractionMatch = normalized.match(/^([+-]?\d+(?:\.\d+)?)\/([+-]?\d+(?:\.\d+)?)$/);
+  if (fractionMatch) {
+    const numerator = Number(fractionMatch[1]);
+    const denominator = Number(fractionMatch[2]);
+    if (Math.abs(denominator) <= EPSILON) {
+      return Number.NaN;
+    }
+    return numerator / denominator;
+  }
+
+  return Number(normalized);
+}
+
+function normalizeRelationOperator(operator) {
+  if (operator === "<") {
+    return "<=";
+  }
+  if (operator === ">") {
+    return ">=";
+  }
+  return operator;
+}
+
+function formatObjectiveSummary(objective) {
+  const modeLabel = objective.mode === "min" ? "Min" : "Max";
+  return `${modeLabel} ${formatLinearObjective(objective.xCoeff, objective.yCoeff)}`;
+}
+
+function formatLinearObjective(xCoeff, yCoeff) {
+  const terms = [
+    formatVariableTerm(xCoeff, "x"),
+    formatVariableTerm(yCoeff, "y"),
+  ].filter(Boolean);
+
+  if (!terms.length) {
+    return "0";
+  }
+
+  return terms
+    .map((term, index) => {
+      const sign = term[0];
+      const body = term.slice(1);
+      if (index === 0) {
+        return sign === "+" ? body : `-${body}`;
+      }
+      return sign === "+" ? `+ ${body}` : `- ${body}`;
+    })
+    .join(" ");
+}
+
+function formatVariableTerm(coefficient, variableName) {
+  const numericValue = Number(coefficient);
+  if (!Number.isFinite(numericValue) || Math.abs(numericValue) <= EPSILON) {
+    return "";
+  }
+
+  const magnitude = Math.abs(numericValue);
+  const coefficientLabel = Math.abs(magnitude - 1) <= EPSILON ? "" : formatNumber(magnitude);
+  const signPrefix = numericValue < 0 ? "-" : "+";
+  return `${signPrefix}${coefficientLabel}${variableName}`;
 }
 
 function loadExampleProblem() {
@@ -1458,6 +2297,71 @@ function getObjectiveMagnitude() {
   return Math.hypot(objective.x, objective.y);
 }
 
+function autoFitViewToConstraints(constraints) {
+  const lines = constraints
+    .map(convertConstraintToHalfPlane)
+    .filter(Boolean)
+    .map((halfPlane) => halfPlane.line);
+  const points = [{ x: 0, y: 0 }];
+
+  lines.forEach((line) => {
+    if (Math.abs(line.a) > EPSILON) {
+      points.push({ x: line.c / line.a, y: 0 });
+    }
+    if (Math.abs(line.b) > EPSILON) {
+      points.push({ x: 0, y: line.c / line.b });
+    }
+  });
+
+  for (let index = 0; index < lines.length; index += 1) {
+    for (let otherIndex = index + 1; otherIndex < lines.length; otherIndex += 1) {
+      const intersection = lineLineIntersection(lines[index], lines[otherIndex]);
+      if (intersection) {
+        points.push(intersection);
+      }
+    }
+  }
+
+  const finitePoints = points.filter((point) =>
+    Number.isFinite(point.x) &&
+    Number.isFinite(point.y) &&
+    Math.abs(point.x) <= 1e6 &&
+    Math.abs(point.y) <= 1e6
+  );
+  if (!finitePoints.length) {
+    return;
+  }
+
+  let minX = Math.min(...finitePoints.map((point) => point.x));
+  let maxX = Math.max(...finitePoints.map((point) => point.x));
+  let minY = Math.min(...finitePoints.map((point) => point.y));
+  let maxY = Math.max(...finitePoints.map((point) => point.y));
+
+  const spanX = Math.max(maxX - minX, 6);
+  const spanY = Math.max(maxY - minY, 6);
+  const paddingX = Math.max(spanX * 0.18, 1);
+  const paddingY = Math.max(spanY * 0.18, 1);
+
+  minX -= paddingX;
+  maxX += paddingX;
+  minY -= paddingY;
+  maxY += paddingY;
+
+  if (minX >= -EPSILON) {
+    minX = Math.min(0, minX);
+  }
+  if (minY >= -EPSILON) {
+    minY = Math.min(0, minY);
+  }
+
+  setViewWindow({
+    xMin: minX,
+    xMax: maxX,
+    yMin: minY,
+    yMax: maxY,
+  });
+}
+
 function convertConstraintToHalfPlane(constraint) {
   const p1 = toNumber(constraint.param1, 0);
   const p2 = toNumber(constraint.param2, 0);
@@ -1564,6 +2468,18 @@ function segmentHalfPlaneIntersection(start, end, halfPlane) {
   return {
     x: start.x + dx * t,
     y: start.y + dy * t,
+  };
+}
+
+function lineLineIntersection(firstLine, secondLine) {
+  const determinant = firstLine.a * secondLine.b - secondLine.a * firstLine.b;
+  if (Math.abs(determinant) <= EPSILON) {
+    return null;
+  }
+
+  return {
+    x: (firstLine.c * secondLine.b - secondLine.c * firstLine.b) / determinant,
+    y: (firstLine.a * secondLine.c - secondLine.a * firstLine.c) / determinant,
   };
 }
 
@@ -1944,6 +2860,10 @@ function escapeHtml(text) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function escapeRegex(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function hexToRgba(hex, alpha) {
