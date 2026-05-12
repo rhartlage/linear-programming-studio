@@ -5,6 +5,7 @@ const MIN_SLOPE_DX_RATIO = 0.015;
 const MIN_VIEW_SPAN = 0.5;
 const ZOOM_IN_FACTOR = 0.8;
 const ZOOM_OUT_FACTOR = 1.25;
+const MIN_TABLE_SHEET_ROWS = 6;
 const CONSTRAINT_TYPES = [
   { value: "line_leq", label: "y <= mx + b" },
   { value: "line_geq", label: "y >= mx + b" },
@@ -23,6 +24,13 @@ const PALETTE = [
   "#2A7F9E",
   "#5F7B2D",
 ];
+const TABLE_SHEET_COLUMNS = [
+  { key: "name", label: "name", placeholder: "c1" },
+  { key: "xCoeff", label: "x coeff", placeholder: "1 or 1/2", inputMode: "text" },
+  { key: "yCoeff", label: "y coeff", placeholder: "2 or 3/4", inputMode: "text" },
+  { key: "relation", label: "relation", options: ["", "<=", ">=", "="] },
+  { key: "rhs", label: "rhs", placeholder: "8 or 5/2", inputMode: "text" },
+];
 
 const dom = {
   plot: document.getElementById("plot"),
@@ -37,7 +45,8 @@ const dom = {
   tableObjectiveMode: document.getElementById("table-objective-mode"),
   tableObjectiveX: document.getElementById("table-objective-x"),
   tableObjectiveY: document.getElementById("table-objective-y"),
-  tableConstraintsInput: document.getElementById("table-constraints-input"),
+  tableSheetBody: document.getElementById("table-sheet-body"),
+  addTableRow: document.getElementById("add-table-row"),
   tableDefaultNonnegative: document.getElementById("table-default-nonnegative"),
   modelLoadStrategy: document.getElementById("model-load-strategy"),
   previewModel: document.getElementById("preview-model"),
@@ -126,6 +135,7 @@ function resetViewToDefault() {
 }
 
 function initializeModelLoader() {
+  resetTableSheetRows();
   setActiveLoaderTab(activeLoaderTab);
   renderModelPreview(null);
 }
@@ -144,10 +154,10 @@ function setActiveLoaderTab(tab) {
   dom.modelPanelTable.classList.toggle("is-hidden", isStatement);
   dom.modelPanelTable.hidden = isStatement;
 
-  invalidateModelPreview("Preview the active loader tab before loading it into the graph.");
+  invalidateModelPreview("The active loader tab changed. Preview it or load it directly.");
 }
 
-function invalidateModelPreview(message = "Preview is out of date. Click Preview model to refresh it.") {
+function invalidateModelPreview(message = "Preview is out of date. Click Preview model or Load into graph to refresh it.") {
   modelPreview = null;
   renderModelPreview(null, message);
 }
@@ -164,7 +174,6 @@ function bindStaticEvents() {
     dom.tableObjectiveMode,
     dom.tableObjectiveX,
     dom.tableObjectiveY,
-    dom.tableConstraintsInput,
     dom.tableDefaultNonnegative,
     dom.modelLoadStrategy,
   ].forEach((control) => {
@@ -172,6 +181,16 @@ function bindStaticEvents() {
     control.addEventListener(eventName, () => {
       invalidateModelPreview();
     });
+  });
+
+  dom.tableSheetBody.addEventListener("input", handleTableSheetEdit);
+  dom.tableSheetBody.addEventListener("change", handleTableSheetEdit);
+  dom.tableSheetBody.addEventListener("paste", handleTableSheetPaste);
+
+  dom.addTableRow.addEventListener("click", () => {
+    const row = appendTableSheetRow();
+    focusTableSheetRow(row);
+    invalidateModelPreview();
   });
 
   dom.previewModel.addEventListener("click", () => {
@@ -244,7 +263,7 @@ function bindStaticEvents() {
   dom.snapOptimum.addEventListener("click", () => {
     const analysis = getAnalysis();
     if (analysis.optimization.status === "bounded") {
-      state.objective.level = analysis.optimization.bestValue;
+      state.objective.level = formatEditableNumber(analysis.optimization.bestValue);
       syncObjectiveInputs();
       refresh();
     }
@@ -447,7 +466,7 @@ function handlePlotPointerMove(event) {
     const objective = getObjectiveCoefficients();
     const delta = objective.x * dx + objective.y * dy;
     const unclampedLevel = dragState.startLevel + delta;
-    state.objective.level = clampObjectiveLevel(unclampedLevel, analysis.objectiveRange);
+    state.objective.level = formatEditableNumber(clampObjectiveLevel(unclampedLevel, analysis.objectiveRange));
     syncObjectiveInputs();
     refresh(false);
     return;
@@ -552,18 +571,18 @@ function translateConstraintByDelta(constraint, startLine, dx, dy) {
 
   switch (constraint.type) {
     case "line_leq":
-      constraint.param2 = formatNumber(shiftedC);
+      constraint.param2 = formatEditableNumber(shiftedC);
       break;
     case "line_geq":
-      constraint.param2 = formatNumber(-shiftedC);
+      constraint.param2 = formatEditableNumber(-shiftedC);
       break;
     case "x_leq":
     case "y_leq":
-      constraint.param1 = formatNumber(shiftedC);
+      constraint.param1 = formatEditableNumber(shiftedC);
       break;
     case "x_geq":
     case "y_geq":
-      constraint.param1 = formatNumber(-shiftedC);
+      constraint.param1 = formatEditableNumber(-shiftedC);
       break;
     default:
       break;
@@ -582,14 +601,16 @@ function rotateConstraintThroughAnchor(constraint, anchorWorld, worldPoint, minD
 
   const slope = (worldPoint.y - anchorWorld.y) / dx;
   const intercept = anchorWorld.y - slope * anchorWorld.x;
-  constraint.param1 = formatNumber(slope);
-  constraint.param2 = formatNumber(intercept);
+  constraint.param1 = formatEditableNumber(slope);
+  constraint.param2 = formatEditableNumber(intercept);
 }
 
 function clampObjectiveToFeasibleRange() {
   analysisCache = null;
   const analysis = getAnalysis();
-  state.objective.level = clampObjectiveLevel(toNumber(state.objective.level, 0), analysis.objectiveRange);
+  state.objective.level = formatEditableNumber(
+    clampObjectiveLevel(toNumber(state.objective.level, 0), analysis.objectiveRange)
+  );
   syncObjectiveInputs();
 }
 
@@ -640,9 +661,9 @@ function rotateObjectiveThroughAnchor(anchorWorld, worldPoint, magnitude) {
   const nextY = normal.y * scale;
   const nextLevel = nextX * anchorWorld.x + nextY * anchorWorld.y;
 
-  state.objective.xCoeff = formatNumber(nextX);
-  state.objective.yCoeff = formatNumber(nextY);
-  state.objective.level = nextLevel;
+  state.objective.xCoeff = formatEditableNumber(nextX);
+  state.objective.yCoeff = formatEditableNumber(nextY);
+  state.objective.level = formatEditableNumber(nextLevel);
 }
 
 function midpointWorld(start, end) {
@@ -681,7 +702,7 @@ function clearModelLoader() {
   dom.tableObjectiveMode.value = "max";
   dom.tableObjectiveX.value = "";
   dom.tableObjectiveY.value = "";
-  dom.tableConstraintsInput.value = "";
+  resetTableSheetRows();
   dom.tableDefaultNonnegative.checked = true;
   dom.modelLoadStrategy.value = "replace";
   modelPreview = null;
@@ -700,9 +721,9 @@ function applyParsedModel(preview) {
 
   if (preview.objective) {
     state.objective.mode = preview.objective.mode;
-    state.objective.xCoeff = formatNumber(preview.objective.xCoeff);
-    state.objective.yCoeff = formatNumber(preview.objective.yCoeff);
-    state.objective.level = preview.objective.level ?? 0;
+    state.objective.xCoeff = formatEditableNumber(preview.objective.xCoeff);
+    state.objective.yCoeff = formatEditableNumber(preview.objective.yCoeff);
+    state.objective.level = formatEditableNumber(preview.objective.level ?? 0);
   }
 
   if (state.constraints.length) {
@@ -716,14 +737,13 @@ function applyParsedModel(preview) {
   refresh();
 }
 
-function renderModelPreview(preview, idleMessage = "Paste a model and click Preview model before loading it into the graph.") {
+function renderModelPreview(preview, idleMessage = "Paste a model, then click Preview model or Load into graph.") {
   dom.modelPreviewDetails.innerHTML = "";
 
   if (!preview) {
     dom.modelPreviewBadge.textContent = "Waiting";
     dom.modelPreviewBadge.className = "status-badge neutral";
     dom.modelPreviewText.textContent = idleMessage;
-    dom.applyModel.disabled = true;
     return;
   }
 
@@ -742,9 +762,8 @@ function renderModelPreview(preview, idleMessage = "Paste a model and click Prev
   dom.modelPreviewBadge.textContent = badgeText;
   dom.modelPreviewBadge.className = `status-badge ${tone}`;
   dom.modelPreviewText.textContent = tone === "neutral"
-    ? "Add a statement or some table rows, then click Preview model."
+    ? "Add a statement or some table rows, then click Preview model or Load into graph."
     : buildModelPreviewMessage(preview);
-  dom.applyModel.disabled = !loadable;
 
   const sections = [];
 
@@ -884,14 +903,14 @@ function parseTableModel() {
   const errors = [];
   const constraints = [];
   const parsedObjective = parseTableObjective();
-  const tableText = dom.tableConstraintsInput.value.trim();
+  const tableRows = readTableSheetRows();
 
   if (parsedObjective.error) {
     errors.push(parsedObjective.error);
   }
 
   const objective = parsedObjective.objective;
-  const tableResult = parseConstraintTable(tableText);
+  const tableResult = parseConstraintTableRows(tableRows);
   constraints.push(...tableResult.constraints);
   warnings.push(...tableResult.warnings);
   errors.push(...tableResult.errors);
@@ -923,7 +942,7 @@ function parseTableModel() {
     warnings.push("No table objective was provided. Loading this preview will keep the current objective.");
   }
 
-  if (!objective && !tableText) {
+  if (!objective && !tableResult.rowCount) {
     warnings.length = 0;
   }
 
@@ -935,6 +954,216 @@ function parseTableModel() {
     errors,
     variableSummary: "Table columns map directly to x and y.",
   };
+}
+
+function resetTableSheetRows() {
+  dom.tableSheetBody.innerHTML = "";
+  ensureTableSheetMinimumRows();
+}
+
+function ensureTableSheetMinimumRows(minimumRows = MIN_TABLE_SHEET_ROWS) {
+  while (dom.tableSheetBody.children.length < minimumRows) {
+    appendTableSheetRow();
+  }
+}
+
+function appendTableSheetRow(values = {}) {
+  const row = document.createElement("div");
+  row.className = "table-sheet-row";
+  row.dataset.rowIndex = String(dom.tableSheetBody.children.length);
+  row.setAttribute("role", "row");
+
+  const indexCell = document.createElement("div");
+  indexCell.className = "table-sheet-index";
+  indexCell.textContent = String(dom.tableSheetBody.children.length + 1);
+  row.appendChild(indexCell);
+
+  TABLE_SHEET_COLUMNS.forEach((column) => {
+    const cell = document.createElement("div");
+    cell.className = "table-sheet-cell";
+    cell.setAttribute("role", "cell");
+
+    let field;
+    if (column.options) {
+      field = document.createElement("select");
+      column.options.forEach((optionValue) => {
+        const option = document.createElement("option");
+        option.value = optionValue;
+        option.textContent = optionValue;
+        field.appendChild(option);
+      });
+      field.value = normalizeRelationOperator(String(values[column.key] ?? "").trim());
+    } else {
+      field = document.createElement("input");
+      field.type = "text";
+      field.inputMode = column.inputMode ?? "text";
+      field.placeholder = column.placeholder ?? "";
+      field.value = String(values[column.key] ?? "");
+    }
+
+    field.className = "table-sheet-field";
+    field.dataset.colKey = column.key;
+    field.setAttribute("aria-label", `Constraint table ${column.label} row ${dom.tableSheetBody.children.length + 1}`);
+    cell.appendChild(field);
+    row.appendChild(cell);
+  });
+
+  dom.tableSheetBody.appendChild(row);
+  return row;
+}
+
+function focusTableSheetRow(row, columnKey = "name") {
+  row?.querySelector(`[data-col-key="${columnKey}"]`)?.focus();
+}
+
+function getTableSheetRows() {
+  return Array.from(dom.tableSheetBody.querySelectorAll(".table-sheet-row"));
+}
+
+function readTableSheetRows() {
+  return getTableSheetRows().map((row) => {
+    const record = {};
+    TABLE_SHEET_COLUMNS.forEach((column) => {
+      record[column.key] = getTableSheetFieldValue(row, column.key);
+    });
+    return record;
+  });
+}
+
+function getTableSheetFieldValue(row, columnKey) {
+  return String(row.querySelector(`[data-col-key="${columnKey}"]`)?.value ?? "").trim();
+}
+
+function rowHasTableValues(row) {
+  return TABLE_SHEET_COLUMNS.some((column) => getTableSheetFieldValue(row, column.key));
+}
+
+function ensureTrailingBlankTableRow() {
+  ensureTableSheetMinimumRows();
+  const rows = getTableSheetRows();
+  const lastRow = rows[rows.length - 1];
+  if (lastRow && rowHasTableValues(lastRow)) {
+    appendTableSheetRow();
+  }
+}
+
+function handleTableSheetEdit(event) {
+  if (!event.target.closest(".table-sheet-row")) {
+    return;
+  }
+
+  ensureTrailingBlankTableRow();
+  invalidateModelPreview();
+}
+
+function handleTableSheetPaste(event) {
+  const field = event.target.closest(".table-sheet-field");
+  const text = event.clipboardData?.getData("text/plain") ?? "";
+  if (!field || (!text.includes("\t") && !text.includes("\n"))) {
+    return;
+  }
+
+  event.preventDefault();
+  pasteIntoTableSheet(field, text);
+  ensureTrailingBlankTableRow();
+  invalidateModelPreview();
+}
+
+function pasteIntoTableSheet(startField, pastedText) {
+  const normalizedText = String(pastedText).replace(/\r/g, "").trimEnd();
+  if (!normalizedText.trim()) {
+    return;
+  }
+
+  const rawLines = normalizedText
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, ""))
+    .filter((line) => line.trim());
+  if (!rawLines.length) {
+    return;
+  }
+
+  const delimiter = detectTableDelimiter(rawLines[0]);
+  const rawRows = rawLines.map((line) => splitDelimitedRow(line, delimiter));
+  const normalizedRows = normalizePastedTableRows(rawRows);
+  if (!normalizedRows.rows.length) {
+    return;
+  }
+
+  const startRowIndex = Number(startField.closest(".table-sheet-row")?.dataset.rowIndex ?? "0");
+  const startColumnIndex = Math.max(
+    0,
+    TABLE_SHEET_COLUMNS.findIndex((column) => column.key === startField.dataset.colKey)
+  );
+  const fillFromFirstColumn = normalizedRows.usesColumnMap;
+  const targetColumnIndex = fillFromFirstColumn ? 0 : startColumnIndex;
+  const finalRows = normalizedRows.rows;
+
+  ensureTableSheetMinimumRows(Math.max(MIN_TABLE_SHEET_ROWS, startRowIndex + finalRows.length));
+
+  finalRows.forEach((rowValues, rowOffset) => {
+    const row = getTableSheetRows()[startRowIndex + rowOffset];
+    if (!row) {
+      return;
+    }
+
+    rowValues.forEach((value, columnOffset) => {
+      const column = TABLE_SHEET_COLUMNS[targetColumnIndex + columnOffset];
+      if (!column) {
+        return;
+      }
+
+      const field = row.querySelector(`[data-col-key="${column.key}"]`);
+      if (!field) {
+        return;
+      }
+
+      const normalizedValue = String(value ?? "").trim();
+      if (column.key === "relation") {
+        field.value = ["<=", ">=", "="].includes(normalizeRelationOperator(normalizedValue))
+          ? normalizeRelationOperator(normalizedValue)
+          : "";
+      } else {
+        field.value = normalizedValue;
+      }
+    });
+  });
+}
+
+function normalizePastedTableRows(rawRows) {
+  if (!rawRows.length) {
+    return { rows: [], usesColumnMap: false };
+  }
+
+  const headerMap = buildTableColumnMap(rawRows[0]);
+  if (headerMap) {
+    return {
+      rows: rawRows.slice(1).map((row) => mapPastedTableRow(row, headerMap)),
+      usesColumnMap: true,
+    };
+  }
+
+  if (rawRows[0].length >= 4) {
+    const fallbackMap = rawRows[0].length >= 5
+      ? { name: 0, xCoeff: 1, yCoeff: 2, relation: 3, rhs: 4 }
+      : { name: -1, xCoeff: 0, yCoeff: 1, relation: 2, rhs: 3 };
+    return {
+      rows: rawRows.map((row) => mapPastedTableRow(row, fallbackMap)),
+      usesColumnMap: true,
+    };
+  }
+
+  return { rows: rawRows, usesColumnMap: false };
+}
+
+function mapPastedTableRow(row, columnMap) {
+  return TABLE_SHEET_COLUMNS.map((column) => {
+    const mappedIndex = columnMap[column.key];
+    if (mappedIndex === undefined || mappedIndex === -1) {
+      return "";
+    }
+    return row[mappedIndex] ?? "";
+  });
 }
 
 function parseTableObjective() {
@@ -964,60 +1193,35 @@ function parseTableObjective() {
   };
 }
 
-function parseConstraintTable(text) {
-  const lines = text
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+function parseConstraintTableRows(rows) {
   const warnings = [];
   const errors = [];
   const constraints = [];
+  let rowCount = 0;
 
-  if (!lines.length) {
-    return { constraints, warnings, errors };
-  }
-
-  const delimiter = detectTableDelimiter(lines[0]);
-  const firstRow = splitDelimitedRow(lines[0], delimiter);
-  let columnMap = buildTableColumnMap(firstRow);
-  let startIndex = 1;
-
-  if (!columnMap) {
-    if (firstRow.length >= 4) {
-      columnMap = firstRow.length >= 5
-        ? { name: 0, xCoeff: 1, yCoeff: 2, relation: 3, rhs: 4 }
-        : { name: -1, xCoeff: 0, yCoeff: 1, relation: 2, rhs: 3 };
-      startIndex = 0;
-      warnings.push(
-        firstRow.length >= 5
-          ? "No header row was detected, so the table was read as name, x coeff, y coeff, relation, rhs."
-          : "No header row was detected, so the table was read as x coeff, y coeff, relation, rhs."
-      );
-    } else {
-      errors.push("The coefficient table needs either a header row or rows with at least four columns.");
-      return { constraints, warnings, errors };
-    }
-  }
-
-  for (let index = startIndex; index < lines.length; index += 1) {
-    const row = splitDelimitedRow(lines[index], delimiter);
-    if (!row.some((value) => value.trim())) {
-      continue;
+  rows.forEach((row, index) => {
+    const name = String(row.name ?? "").trim();
+    const relationText = String(row.relation ?? "").trim();
+    const xText = String(row.xCoeff ?? "").trim();
+    const yText = String(row.yCoeff ?? "").trim();
+    const rhsText = String(row.rhs ?? "").trim();
+    if (![name, relationText, xText, yText, rhsText].some(Boolean)) {
+      return;
     }
 
-    const name = (row[columnMap.name] ?? "").trim();
-    const relation = normalizeRelationOperator((row[columnMap.relation] ?? "").trim());
-    const xCoeff = parseFlexibleNumber(row[columnMap.xCoeff] ?? "");
-    const yCoeff = parseFlexibleNumber(row[columnMap.yCoeff] ?? "");
-    const rhs = parseFlexibleNumber(row[columnMap.rhs] ?? "");
+    rowCount += 1;
+    const relation = normalizeRelationOperator(relationText);
+    const xCoeff = parseFlexibleNumber(xText);
+    const yCoeff = parseFlexibleNumber(yText);
+    const rhs = parseFlexibleNumber(rhsText);
 
     if (!relation || !["<=", ">=", "="].includes(relation)) {
       errors.push(`Row ${index + 1}: relation must be <=, >=, or =.`);
-      continue;
+      return;
     }
     if (!Number.isFinite(xCoeff) || !Number.isFinite(yCoeff) || !Number.isFinite(rhs)) {
       errors.push(`Row ${index + 1}: x coeff, y coeff, and rhs must all be numeric.`);
-      continue;
+      return;
     }
 
     const converted = convertRelationToConstraintSeeds({
@@ -1030,13 +1234,13 @@ function parseConstraintTable(text) {
 
     if (!converted.length) {
       errors.push(`Row ${index + 1}: the coefficients do not define a usable 2D constraint.`);
-      continue;
+      return;
     }
 
     constraints.push(...converted);
-  }
+  });
 
-  return { constraints, warnings, errors };
+  return { constraints, warnings, errors, rowCount };
 }
 
 function detectTableDelimiter(line) {
@@ -1111,7 +1315,7 @@ function normalizeStatementText(text) {
     .replace(/\u2158/g, "4/5")
     .replace(/\u2159/g, "1/6")
     .replace(/\u215a/g, "5/6")
-    .replace(/\b(?:s\.?\s*t\.?|subject to)\b/gi, "\nsubject to\n")
+    .replace(/(?:\bsubject to\b|\bs\.?\s*t\b\.?)/gi, "\nsubject to\n")
     .replace(/;/g, "\n");
 }
 
@@ -1173,7 +1377,7 @@ function inferVariableMap(lines) {
 }
 
 function isIgnorableStatementLine(line) {
-  return /^(subject to|constraints?|such that)$/i.test(line.trim());
+  return /^(subject to|constraints?|such that|[.:]+)$/i.test(line.trim());
 }
 
 function parseStatementObjectiveLine(line, variableMap) {
@@ -1255,7 +1459,7 @@ function convertRelationToConstraintSeeds({ name, xCoeff, yCoeff, relation, rhs 
       type: relation === "<="
         ? (xCoeff > 0 ? "x_leq" : "x_geq")
         : (xCoeff > 0 ? "x_geq" : "x_leq"),
-      param1: formatNumber(bound),
+      param1: formatEditableNumber(bound),
       param2: "0",
       enabled: true,
     }];
@@ -1268,7 +1472,7 @@ function convertRelationToConstraintSeeds({ name, xCoeff, yCoeff, relation, rhs 
       type: relation === "<="
         ? (yCoeff > 0 ? "y_leq" : "y_geq")
         : (yCoeff > 0 ? "y_geq" : "y_leq"),
-      param1: formatNumber(bound),
+      param1: formatEditableNumber(bound),
       param2: "0",
       enabled: true,
     }];
@@ -1281,8 +1485,8 @@ function convertRelationToConstraintSeeds({ name, xCoeff, yCoeff, relation, rhs 
     type: relation === "<="
       ? (yCoeff > 0 ? "line_leq" : "line_geq")
       : (yCoeff > 0 ? "line_geq" : "line_leq"),
-    param1: formatNumber(slope),
-    param2: formatNumber(intercept),
+    param1: formatEditableNumber(slope),
+    param2: formatEditableNumber(intercept),
     enabled: true,
   }];
 }
@@ -1344,12 +1548,17 @@ function parseLinearExpression(expression, variableMap) {
 }
 
 function parseFlexibleNumber(value) {
-  const normalized = String(value).trim();
+  const normalized = String(value)
+    .trim()
+    .replace(/[−–—]/g, "-")
+    .replace(/\s*\/\s*/g, "/");
   if (!normalized) {
     return Number.NaN;
   }
 
-  const fractionMatch = normalized.match(/^([+-]?\d+(?:\.\d+)?)\/([+-]?\d+(?:\.\d+)?)$/);
+  const fractionMatch = normalized.match(
+    /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))\/([+-]?(?:\d+(?:\.\d+)?|\.\d+))$/
+  );
   if (fractionMatch) {
     const numerator = Number(fractionMatch[1]);
     const denominator = Number(fractionMatch[2]);
@@ -1363,6 +1572,12 @@ function parseFlexibleNumber(value) {
 }
 
 function normalizeRelationOperator(operator) {
+  if (operator === "≤") {
+    return "<=";
+  }
+  if (operator === "≥") {
+    return ">=";
+  }
   if (operator === "<") {
     return "<=";
   }
@@ -1400,13 +1615,13 @@ function formatLinearObjective(xCoeff, yCoeff) {
 }
 
 function formatVariableTerm(coefficient, variableName) {
-  const numericValue = Number(coefficient);
+  const numericValue = toNumber(coefficient, Number.NaN);
   if (!Number.isFinite(numericValue) || Math.abs(numericValue) <= EPSILON) {
     return "";
   }
 
   const magnitude = Math.abs(numericValue);
-  const coefficientLabel = Math.abs(magnitude - 1) <= EPSILON ? "" : formatNumber(magnitude);
+  const coefficientLabel = Math.abs(magnitude - 1) <= EPSILON ? "" : formatAnswerNumber(magnitude);
   const signPrefix = numericValue < 0 ? "-" : "+";
   return `${signPrefix}${coefficientLabel}${variableName}`;
 }
@@ -1494,14 +1709,14 @@ function renderConstraintList() {
         </label>
         <label>
           <span>${labels.param1}</span>
-          <input data-field="param1" type="text" inputmode="decimal" value="${escapeHtml(constraint.param1)}" />
+          <input data-field="param1" type="text" inputmode="text" value="${escapeHtml(constraint.param1)}" />
         </label>
         <label class="${labels.hideParam2 ? "is-hidden" : ""}">
           <span>${labels.param2}</span>
           <input
             data-field="param2"
             type="text"
-            inputmode="decimal"
+            inputmode="text"
             value="${escapeHtml(constraint.param2)}"
             ${labels.hideParam2 ? 'style="opacity:0.55"' : ""}
           />
@@ -1551,7 +1766,7 @@ function syncObjectiveFromInputs(includeLevel) {
   state.objective.xCoeff = dom.objectiveX.value;
   state.objective.yCoeff = dom.objectiveY.value;
   if (includeLevel) {
-    state.objective.level = toNumber(dom.objectiveLevel.value, state.objective.level);
+    state.objective.level = dom.objectiveLevel.value;
   }
 }
 
@@ -1559,7 +1774,7 @@ function syncObjectiveInputs() {
   dom.objectiveMode.value = state.objective.mode;
   dom.objectiveX.value = state.objective.xCoeff;
   dom.objectiveY.value = state.objective.yCoeff;
-  dom.objectiveLevel.value = formatNumber(state.objective.level);
+  dom.objectiveLevel.value = formatInputValue(state.objective.level);
 }
 
 function syncViewFromInputs() {
@@ -1716,8 +1931,8 @@ function analyzeOptimization({ halfPlanes, worldPolygon, visiblePolygon, view, o
     visibleContacts,
     boundedRegion,
     message: bestContacts.length > 1
-      ? `Optimal value ${formatNumber(bestValue)} occurs along an edge.`
-      : `Optimal value ${formatNumber(bestValue)} occurs at a vertex.`,
+      ? `Optimal value ${formatAnswerNumber(bestValue)} occurs along an edge.`
+      : `Optimal value ${formatAnswerNumber(bestValue)} occurs at a vertex.`,
   };
 }
 
@@ -1771,10 +1986,10 @@ function renderStatuses(analysis) {
     dom.objectiveText.textContent = "Set at least one nonzero objective coefficient to draw and drag the line.";
   } else if (analysis.currentContacts.length) {
     setStatus(dom.objectiveBadge, "Intersecting", "success");
-    dom.objectiveText.textContent = `Current level z = ${formatNumber(analysis.currentLevel)} touches the visible feasible region.`;
+    dom.objectiveText.textContent = `Current level z = ${formatAnswerNumber(analysis.currentLevel)} touches the visible feasible region.`;
   } else if (analysis.currentLineSegment) {
     setStatus(dom.objectiveBadge, "Draggable", "warning");
-    dom.objectiveText.textContent = `Current level z = ${formatNumber(analysis.currentLevel)} is visible but not touching the feasible region.`;
+    dom.objectiveText.textContent = `Current level z = ${formatAnswerNumber(analysis.currentLevel)} is visible but not touching the feasible region.`;
   } else {
     setStatus(dom.objectiveBadge, "Out of frame", "warning");
     dom.objectiveText.textContent = "The objective line is parallel to itself as expected, but its current level is outside the graph window.";
@@ -1800,7 +2015,7 @@ function renderStatuses(analysis) {
       } else {
         const point = analysis.optimization.bestContacts[0];
         setStatus(dom.optimumBadge, "Vertex optimum", "success");
-        dom.optimumText.textContent = `${analysis.optimization.message} Best point: (${formatNumber(point.x)}, ${formatNumber(point.y)}).`;
+        dom.optimumText.textContent = `${analysis.optimization.message} Best point: (${formatAnswerNumber(point.x)}, ${formatAnswerNumber(point.y)}).`;
       }
       break;
     default:
@@ -2715,25 +2930,25 @@ function describeConstraint(constraint) {
     case "line_geq":
       return `y >= ${formatSlopeIntercept(p1, p2)}`;
     case "x_leq":
-      return `x <= ${formatNumber(p1)}`;
+      return `x <= ${formatAnswerNumber(p1)}`;
     case "x_geq":
-      return `x >= ${formatNumber(p1)}`;
+      return `x >= ${formatAnswerNumber(p1)}`;
     case "y_leq":
-      return `y <= ${formatNumber(p1)}`;
+      return `y <= ${formatAnswerNumber(p1)}`;
     case "y_geq":
-      return `y >= ${formatNumber(p1)}`;
+      return `y >= ${formatAnswerNumber(p1)}`;
     default:
       return "";
   }
 }
 
 function formatSlopeIntercept(slope, intercept) {
-  const slopePart = `${formatNumber(slope)}x`;
+  const slopePart = `${formatAnswerNumber(slope)}x`;
   if (Math.abs(intercept) <= EPSILON) {
     return slopePart;
   }
   const sign = intercept >= 0 ? "+" : "-";
-  return `${slopePart} ${sign} ${formatNumber(Math.abs(intercept))}`;
+  return `${slopePart} ${sign} ${formatAnswerNumber(Math.abs(intercept))}`;
 }
 
 function getConstraintFieldLabels(type) {
@@ -2818,7 +3033,7 @@ function normalizeDirection(direction) {
 }
 
 function toNumber(value, fallback = 0) {
-  const parsed = Number(value);
+  const parsed = typeof value === "number" ? value : parseFlexibleNumber(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
@@ -2828,6 +3043,98 @@ function formatNumber(value) {
   }
   const rounded = Math.abs(value) < 1e-9 ? 0 : roundTo(value, 4);
   return Number(rounded).toString();
+}
+
+function formatEditableNumber(value) {
+  const numericValue = toNumber(value, Number.NaN);
+  if (!Number.isFinite(numericValue)) {
+    return "0";
+  }
+
+  const fractionText = formatFractionOnly(numericValue);
+  return fractionText && fractionText !== "0"
+    ? fractionText
+    : formatNumber(numericValue);
+}
+
+function formatAnswerNumber(value) {
+  const numericValue = toNumber(value, Number.NaN);
+  if (!Number.isFinite(numericValue)) {
+    return "0";
+  }
+
+  const decimalText = formatNumber(numericValue);
+  const fractionText = formatFractionOnly(numericValue);
+  if (!fractionText || fractionText === decimalText) {
+    return decimalText;
+  }
+
+  return `${fractionText} (${decimalText})`;
+}
+
+function formatInputValue(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  return formatEditableNumber(value);
+}
+
+function formatFractionOnly(value, maxDenominator = 64, tolerance = 1e-8) {
+  const fraction = approximateFraction(value, maxDenominator, tolerance);
+  if (!fraction) {
+    return null;
+  }
+  if (fraction.denominator === 1) {
+    return String(fraction.numerator);
+  }
+  return `${fraction.numerator}/${fraction.denominator}`;
+}
+
+function approximateFraction(value, maxDenominator = 64, tolerance = 1e-8) {
+  const numericValue = toNumber(value, Number.NaN);
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+  if (Math.abs(numericValue) <= EPSILON) {
+    return { numerator: 0, denominator: 1 };
+  }
+
+  const sign = numericValue < 0 ? -1 : 1;
+  const absoluteValue = Math.abs(numericValue);
+  let bestNumerator = 0;
+  let bestDenominator = 1;
+  let bestError = Number.POSITIVE_INFINITY;
+
+  for (let denominator = 1; denominator <= maxDenominator; denominator += 1) {
+    const numerator = Math.round(absoluteValue * denominator);
+    const error = Math.abs(absoluteValue - numerator / denominator);
+    if (error < bestError - 1e-12 || (Math.abs(error - bestError) <= 1e-12 && denominator < bestDenominator)) {
+      bestNumerator = numerator;
+      bestDenominator = denominator;
+      bestError = error;
+    }
+  }
+
+  if (bestError > tolerance) {
+    return null;
+  }
+
+  const divisor = greatestCommonDivisor(bestNumerator, bestDenominator);
+  return {
+    numerator: sign * (bestNumerator / divisor),
+    denominator: bestDenominator / divisor,
+  };
+}
+
+function greatestCommonDivisor(a, b) {
+  let x = Math.abs(Math.trunc(a));
+  let y = Math.abs(Math.trunc(b));
+  while (y) {
+    const remainder = x % y;
+    x = y;
+    y = remainder;
+  }
+  return x || 1;
 }
 
 function roundTo(value, digits) {

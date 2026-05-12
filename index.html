@@ -47,10 +47,6 @@
                 <p class="section-kicker">Setup</p>
                 <h2>Constraints and objective</h2>
               </div>
-              <div class="pill-row">
-                <span class="pill">GitHub Pages ready</span>
-                <span class="pill">No build step</span>
-              </div>
             </div>
 
             <div class="button-row spotlight-row">
@@ -106,7 +102,7 @@
                     placeholder="Max 5A + 9B&#10;s.t.&#10;1A + 2B <= 8&#10;7A + 5B <= 35&#10;A,B >= 0"
                   ></textarea>
                 </label>
-                <p class="loader-note">Use a standard two-variable LP format with `Max` or `Min`, one constraint per line, and optional nonnegativity such as `A,B >= 0`.</p>
+                <p class="loader-note">Use a standard two-variable LP format with `Max` or `Min`, one constraint per line, optional nonnegativity such as `A,B >= 0`, and fractions like `1/2` when needed.</p>
               </div>
 
               <div
@@ -126,29 +122,45 @@
                   </label>
                   <label>
                     <span>x coeff</span>
-                    <input id="table-objective-x" type="text" inputmode="decimal" placeholder="5" />
+                    <input id="table-objective-x" type="text" inputmode="text" placeholder="5 or 1/2" />
                   </label>
                   <label>
                     <span>y coeff</span>
-                    <input id="table-objective-y" type="text" inputmode="decimal" placeholder="9" />
+                    <input id="table-objective-y" type="text" inputmode="text" placeholder="9 or 3/4" />
                   </label>
                 </div>
 
-                <label class="loader-textarea-label">
-                  <span>Constraint table</span>
-                  <textarea
-                    id="table-constraints-input"
-                    rows="8"
-                    placeholder="name	x coeff	y coeff	relation	rhs&#10;c1	1	2	<=	8&#10;c2	7	5	<=	35"
-                  ></textarea>
-                </label>
+                <div class="loader-sheet-block">
+                  <div class="loader-sheet-label-row">
+                    <span>Constraint table</span>
+                    <span class="loader-sheet-caption">Type into the cells or paste rows from Excel or Google Sheets.</span>
+                  </div>
+                  <div class="table-sheet-scroller">
+                    <div class="table-sheet" role="table" aria-label="Constraint table">
+                      <div class="table-sheet-row table-sheet-header" role="row">
+                        <div class="table-sheet-index" aria-hidden="true"></div>
+                        <div class="table-sheet-cell" role="columnheader">name</div>
+                        <div class="table-sheet-cell" role="columnheader">x coeff</div>
+                        <div class="table-sheet-cell" role="columnheader">y coeff</div>
+                        <div class="table-sheet-cell" role="columnheader">relation</div>
+                        <div class="table-sheet-cell" role="columnheader">rhs</div>
+                      </div>
+                      <div id="table-sheet-body" class="table-sheet-body"></div>
+                    </div>
+                  </div>
+                  <div class="button-row sheet-row-actions">
+                    <button id="add-table-row" class="button button-secondary" type="button">
+                      Add row
+                    </button>
+                  </div>
+                </div>
 
                 <label class="loader-inline-toggle">
                   <input id="table-default-nonnegative" type="checkbox" checked />
                   <span>Add `x >= 0` and `y >= 0` if they are not already listed</span>
                 </label>
 
-                <p class="loader-note">Paste rows copied from Excel or Google Sheets with columns: `name`, `x coeff`, `y coeff`, `relation`, and `rhs`.</p>
+                <p class="loader-note">Paste spreadsheet rows directly into the grid. A header row is optional, the columns are `name`, `x coeff`, `y coeff`, `relation`, and `rhs`, and fractions like `1/2` are accepted.</p>
               </div>
 
               <div class="form-grid model-load-grid">
@@ -176,7 +188,7 @@
               <div class="model-preview" aria-live="polite">
                 <div class="model-preview-summary">
                   <strong id="model-preview-badge" class="status-badge neutral">Waiting</strong>
-                  <p id="model-preview-text">Paste a model and click Preview model before loading it into the graph.</p>
+                  <p id="model-preview-text">Paste a model, then click Preview model or Load into graph.</p>
                 </div>
                 <div id="model-preview-details" class="model-preview-details"></div>
               </div>
@@ -193,19 +205,19 @@
               <div class="form-grid view-grid">
                 <label>
                   <span>x min</span>
-                  <input id="view-x-min" type="text" inputmode="decimal" value="0" />
+                  <input id="view-x-min" type="text" inputmode="text" value="0" />
                 </label>
                 <label>
                   <span>x max</span>
-                  <input id="view-x-max" type="text" inputmode="decimal" value="10" />
+                  <input id="view-x-max" type="text" inputmode="text" value="10" />
                 </label>
                 <label>
                   <span>y min</span>
-                  <input id="view-y-min" type="text" inputmode="decimal" value="0" />
+                  <input id="view-y-min" type="text" inputmode="text" value="0" />
                 </label>
                 <label>
                   <span>y max</span>
-                  <input id="view-y-max" type="text" inputmode="decimal" value="10" />
+                  <input id="view-y-max" type="text" inputmode="text" value="10" />
                 </label>
               </div>
 
@@ -234,15 +246,15 @@
                 </label>
                 <label>
                   <span>Slope m</span>
-                  <input id="objective-x" type="text" inputmode="decimal" value="0.75" />
+                  <input id="objective-x" type="text" inputmode="text" value="0.75" />
                 </label>
                 <label>
                   <span>Intercept b</span>
-                  <input id="objective-y" type="text" inputmode="decimal" value="1" />
+                  <input id="objective-y" type="text" inputmode="text" value="1" />
                 </label>
                 <label>
                   <span>Level z</span>
-                  <input id="objective-level" type="text" inputmode="decimal" value="2" />
+                  <input id="objective-level" type="text" inputmode="text" value="2" />
                 </label>
               </div>
 
