@@ -74,11 +74,6 @@ const dom = {
   objectiveY: document.getElementById("objective-y"),
   objectiveLevel: document.getElementById("objective-level"),
   snapOptimum: document.getElementById("snap-optimum"),
-  viewXMin: document.getElementById("view-x-min"),
-  viewXMax: document.getElementById("view-x-max"),
-  viewYMin: document.getElementById("view-y-min"),
-  viewYMax: document.getElementById("view-y-max"),
-  resetView: document.getElementById("reset-view"),
   resetViewInline: document.getElementById("reset-view-inline"),
   feasibilityBadge: document.getElementById("feasibility-badge"),
   feasibilityText: document.getElementById("feasibility-text"),
@@ -362,14 +357,6 @@ function bindStaticEvents() {
     refresh();
   });
 
-  [dom.viewXMin, dom.viewXMax, dom.viewYMin, dom.viewYMax].forEach((input) => {
-    input.addEventListener("input", () => {
-      syncViewFromInputs();
-      refresh();
-    });
-  });
-
-  dom.resetView.addEventListener("click", resetViewToDefault);
   dom.resetViewInline.addEventListener("click", resetViewToDefault);
 
   dom.snapOptimum.addEventListener("click", () => {
@@ -1979,18 +1966,8 @@ function syncObjectiveInputs() {
   dom.objectiveLevel.value = formatInputValue(state.objective.level);
 }
 
-function syncViewFromInputs() {
-  state.view.xMin = dom.viewXMin.value;
-  state.view.xMax = dom.viewXMax.value;
-  state.view.yMin = dom.viewYMin.value;
-  state.view.yMax = dom.viewYMax.value;
-}
-
 function syncViewInputs() {
-  dom.viewXMin.value = state.view.xMin;
-  dom.viewXMax.value = state.view.xMax;
-  dom.viewYMin.value = state.view.yMin;
-  dom.viewYMax.value = state.view.yMax;
+  // The graph window is now controlled directly from the plot via pan/zoom.
 }
 
 function refresh(syncInputs = true) {

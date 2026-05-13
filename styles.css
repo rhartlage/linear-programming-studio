@@ -614,8 +614,7 @@ textarea {
 }
 
 .constraint-grid,
-.objective-grid,
-.view-grid {
+.objective-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -817,7 +816,6 @@ textarea:focus,
   .objective-grid,
   .table-loader-setup-grid,
   .table-loader-objective-grid,
-  .view-grid,
   .status-grid {
     grid-template-columns: 1fr;
   }
