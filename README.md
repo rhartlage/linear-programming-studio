@@ -16,7 +16,7 @@ Because the app is plain `HTML`, `CSS`, and `JavaScript`, you can open `index.ht
 
 The primary public URL is:
 
-- `https://benhartlage.com/tools/linear-programming/`
+- `https://tools.benhartlage.com/linear-programming/`
 
 The original GitHub Pages URL remains a compatibility entry point while the public-site migration is accepted.
 
@@ -27,6 +27,6 @@ Your root site at `https://rhartlage.github.io/` is already publishing a tool-hu
 1. Publish this app in its own public repository, such as `linear-programming-studio`.
 2. Enable GitHub Pages for that repository from the `main` branch and `/ (root)`.
 3. Visit the compatibility deployment at `https://rhartlage.github.io/linear-programming-studio/`.
-4. Keep its canonical URL pointed at the primary `benhartlage.com` route.
+4. Keep its canonical URL pointed at the primary `tools.benhartlage.com` route.
 
 If you decide you want this app to replace the root homepage instead, move the files into the `rhartlage.github.io` repository root and publish from there.
