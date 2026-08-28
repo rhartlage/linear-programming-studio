@@ -1,6 +1,7 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 const EPSILON = 1e-7;
 const PLOT_BOX = { x: 74, y: 26, width: 612, height: 612 };
+const FEASIBLE_ARROW = { anchorRatio: 0.35, length: 22, headLength: 7, headWidth: 6 };
 const MIN_SLOPE_DX_RATIO = 0.015;
 const MIN_VIEW_SPAN = 0.5;
 const ZOOM_IN_FACTOR = 0.8;
@@ -2442,12 +2443,13 @@ function drawVisibleRegion(group, polygon, view) {
 
 function drawConstraints(group, analysis) {
   const lineLayer = svgGroup();
+  const feasibleArrowLayer = svgGroup();
   const midpointLayer = svgGroup();
   const slopeLayer = svgGroup();
   const labelLayer = svgGroup();
 
   analysis.constraintEntries.forEach((entry) => {
-    const { constraint, index, segment, id } = entry;
+    const { constraint, halfPlane, index, segment, id } = entry;
     if (!segment) {
       return;
     }
@@ -2488,6 +2490,14 @@ function drawConstraints(group, analysis) {
         "pointer-events": "none",
       })
     );
+
+    drawFeasibleDirectionArrow(feasibleArrowLayer, {
+      color,
+      constraintId: id,
+      halfPlane,
+      segment,
+      view: analysis.view,
+    });
 
     midpointLayer.appendChild(
       svgElement("circle", {
@@ -2538,9 +2548,106 @@ function drawConstraints(group, analysis) {
   });
 
   group.appendChild(lineLayer);
+  group.appendChild(feasibleArrowLayer);
   group.appendChild(midpointLayer);
   group.appendChild(slopeLayer);
   group.appendChild(labelLayer);
+}
+
+function drawFeasibleDirectionArrow(group, { color, constraintId, halfPlane, segment, view }) {
+  const geometry = getFeasibleArrowGeometry(segment, halfPlane, view);
+  if (!geometry) {
+    return;
+  }
+
+  const arrowGroup = svgGroup();
+  arrowGroup.setAttribute("data-feasible-arrow", "");
+  arrowGroup.setAttribute("data-constraint-id", String(constraintId));
+  arrowGroup.setAttribute("aria-hidden", "true");
+  arrowGroup.setAttribute("pointer-events", "none");
+
+  arrowGroup.appendChild(
+    svgElement("line", {
+      x1: geometry.tail.x,
+      y1: geometry.tail.y,
+      x2: geometry.shaftEnd.x,
+      y2: geometry.shaftEnd.y,
+      stroke: "rgba(255,255,255,0.92)",
+      "stroke-width": 6,
+      "stroke-linecap": "round",
+    })
+  );
+
+  arrowGroup.appendChild(
+    svgElement("line", {
+      x1: geometry.tail.x,
+      y1: geometry.tail.y,
+      x2: geometry.shaftEnd.x,
+      y2: geometry.shaftEnd.y,
+      stroke: color,
+      "stroke-width": 2.5,
+      "stroke-linecap": "round",
+    })
+  );
+
+  arrowGroup.appendChild(
+    svgElement("polygon", {
+      points: [geometry.tip, geometry.headLeft, geometry.headRight]
+        .map((point) => `${point.x},${point.y}`)
+        .join(" "),
+      fill: color,
+      stroke: "rgba(255,255,255,0.92)",
+      "stroke-width": 1.5,
+      "stroke-linejoin": "round",
+    })
+  );
+
+  group.appendChild(arrowGroup);
+}
+
+function getFeasibleArrowGeometry(segment, halfPlane, view) {
+  const dx = segment.end.x - segment.start.x;
+  const dy = segment.end.y - segment.start.y;
+  const segmentLength = Math.hypot(dx, dy);
+  if (segmentLength <= EPSILON) {
+    return null;
+  }
+
+  const tangent = { x: dx / segmentLength, y: dy / segmentLength };
+  let normal = { x: -tangent.y, y: tangent.x };
+  const anchor = {
+    x: segment.start.x + dx * FEASIBLE_ARROW.anchorRatio,
+    y: segment.start.y + dy * FEASIBLE_ARROW.anchorRatio,
+  };
+  const testPoint = svgToWorld(anchor.x + normal.x * 4, anchor.y + normal.y * 4, view);
+
+  if (!satisfiesHalfPlane(testPoint, halfPlane)) {
+    normal = { x: -normal.x, y: -normal.y };
+  }
+
+  const tip = {
+    x: anchor.x + normal.x * FEASIBLE_ARROW.length,
+    y: anchor.y + normal.y * FEASIBLE_ARROW.length,
+  };
+  const shaftEnd = {
+    x: tip.x - normal.x * FEASIBLE_ARROW.headLength,
+    y: tip.y - normal.y * FEASIBLE_ARROW.headLength,
+  };
+  const headHalfWidth = FEASIBLE_ARROW.headWidth / 2;
+
+  return {
+    tail: anchor,
+    shaftEnd,
+    tip,
+    headLeft: {
+      x: shaftEnd.x - normal.y * headHalfWidth,
+      y: shaftEnd.y + normal.x * headHalfWidth,
+    },
+    headRight: {
+      x: shaftEnd.x + normal.y * headHalfWidth,
+      y: shaftEnd.y - normal.x * headHalfWidth,
+    },
+  };
 }
 
 function drawAxes(group, view) {
