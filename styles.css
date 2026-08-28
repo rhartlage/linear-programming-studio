@@ -99,7 +99,13 @@ textarea {
   --control-column-width: 530px;
   display: grid;
   gap: 0;
-  grid-template-columns: var(--control-column-width) 22px minmax(0, 1fr);
+  grid-template-columns: var(--control-column-width) 8px minmax(0, 1fr);
+}
+
+@media (min-width: 1161px) {
+  #workspace {
+    column-gap: 0;
+  }
 }
 
 .control-column {
@@ -112,6 +118,8 @@ textarea {
   position: sticky;
   top: 24px;
   align-self: start;
+  justify-self: center;
+  z-index: 1;
   display: flex;
   justify-content: center;
   align-items: flex-start;
