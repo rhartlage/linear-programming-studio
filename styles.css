@@ -133,19 +133,17 @@ textarea {
 
 .workspace-divider-grip {
   display: block;
-  width: 5px;
+  width: 2px;
   height: 96px;
   border-radius: 999px;
   background: rgba(31, 122, 140, 0.42);
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.72);
-  transition: background-color 150ms ease, box-shadow 150ms ease;
+  transition: background-color 150ms ease;
 }
 
 .workspace-divider:hover .workspace-divider-grip,
 .workspace-divider.is-dragging .workspace-divider-grip,
 .workspace-divider:focus-visible .workspace-divider-grip {
   background: var(--teal);
-  box-shadow: 0 0 0 4px rgba(31, 122, 140, 0.16);
 }
 
 .workspace-divider:focus-visible {
