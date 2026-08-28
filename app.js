@@ -8,6 +8,13 @@ const ZOOM_IN_FACTOR = 0.8;
 const ZOOM_OUT_FACTOR = 1.25;
 const MIN_TABLE_SHEET_ROWS = 6;
 const DEFAULT_TABLE_VARIABLES = { x: "A", y: "B" };
+const WORKSPACE_STACK_BREAKPOINT = 1160;
+const CONTROL_COLUMN_DEFAULT_WIDTH = 530;
+const CONTROL_COLUMN_MIN_WIDTH = 360;
+const CONTROL_COLUMN_MAX_WIDTH = 800;
+const GRAPH_COLUMN_MIN_WIDTH = 520;
+const WORKSPACE_DIVIDER_FALLBACK_WIDTH = 22;
+const WORKSPACE_DIVIDER_KEY_STEP = 24;
 const CONSTRAINT_TYPES = [
   { value: "line_leq", label: "y <= mx + b" },
   { value: "line_geq", label: "y >= mx + b" },
@@ -35,6 +42,10 @@ const TABLE_SHEET_COLUMNS = [
 ];
 
 const dom = {
+  workspace: document.getElementById("workspace"),
+  controlColumn: document.getElementById("control-column"),
+  workspaceDivider: document.getElementById("workspace-divider"),
+  graphPanel: document.getElementById("graph-panel"),
   plot: document.getElementById("plot"),
   constraintList: document.getElementById("constraint-list"),
   addConstraint: document.getElementById("add-constraint"),
@@ -126,13 +137,175 @@ let dragState = null;
 let nextConstraintId = 1;
 let activeLoaderTab = "statement";
 let modelPreview = null;
+let workspaceDividerDrag = null;
+let preferredControlColumnWidth = CONTROL_COLUMN_DEFAULT_WIDTH;
+let workspaceResizeObserver = null;
 
 initialize();
 
 function initialize() {
+  initializeWorkspaceDivider();
   bindStaticEvents();
   initializeModelLoader();
   loadExampleProblem();
+}
+
+function initializeWorkspaceDivider() {
+  if (!dom.workspace || !dom.controlColumn || !dom.workspaceDivider || !dom.graphPanel) {
+    return;
+  }
+
+  dom.workspaceDivider.addEventListener("pointerdown", handleWorkspaceDividerPointerDown);
+  dom.workspaceDivider.addEventListener("lostpointercapture", finishWorkspaceDividerDrag);
+  dom.workspaceDivider.addEventListener("keydown", handleWorkspaceDividerKeyDown);
+  window.addEventListener("pointermove", handleWorkspaceDividerPointerMove);
+  window.addEventListener("pointerup", finishWorkspaceDividerDrag);
+  window.addEventListener("pointercancel", finishWorkspaceDividerDrag);
+
+  if (typeof ResizeObserver === "function") {
+    workspaceResizeObserver = new ResizeObserver(syncWorkspaceDivider);
+    workspaceResizeObserver.observe(dom.workspace);
+  } else {
+    window.addEventListener("resize", syncWorkspaceDivider);
+  }
+
+  syncWorkspaceDivider();
+}
+
+function isWorkspaceDividerActive() {
+  return window.innerWidth > WORKSPACE_STACK_BREAKPOINT;
+}
+
+function getWorkspaceDividerBounds() {
+  const workspaceWidth = dom.workspace.getBoundingClientRect().width;
+  const dividerWidth = dom.workspaceDivider.getBoundingClientRect().width || WORKSPACE_DIVIDER_FALLBACK_WIDTH;
+  const availableMaximum = workspaceWidth - dividerWidth - GRAPH_COLUMN_MIN_WIDTH;
+  return {
+    min: CONTROL_COLUMN_MIN_WIDTH,
+    max: Math.max(
+      CONTROL_COLUMN_MIN_WIDTH,
+      Math.min(CONTROL_COLUMN_MAX_WIDTH, Math.floor(availableMaximum))
+    ),
+  };
+}
+
+function getCurrentControlColumnWidth() {
+  const width = dom.controlColumn.getBoundingClientRect().width;
+  return Number.isFinite(width) && width > 0 ? width : CONTROL_COLUMN_DEFAULT_WIDTH;
+}
+
+function applyControlColumnWidth(requestedWidth, rememberPreference = true) {
+  const bounds = getWorkspaceDividerBounds();
+  const numericWidth = Number.isFinite(requestedWidth) ? requestedWidth : CONTROL_COLUMN_DEFAULT_WIDTH;
+  if (rememberPreference) {
+    preferredControlColumnWidth = numericWidth;
+  }
+  const width = Math.round(clamp(bounds.min, numericWidth, bounds.max));
+
+  dom.workspace.style.setProperty("--control-column-width", `${width}px`);
+  dom.workspaceDivider.setAttribute("aria-valuemin", String(bounds.min));
+  dom.workspaceDivider.setAttribute("aria-valuemax", String(bounds.max));
+  dom.workspaceDivider.setAttribute("aria-valuenow", String(width));
+  dom.workspaceDivider.setAttribute("aria-valuetext", `Setup column ${width} pixels wide`);
+  return width;
+}
+
+function syncWorkspaceDivider() {
+  if (!isWorkspaceDividerActive()) {
+    finishWorkspaceDividerDrag();
+    dom.workspace.style.removeProperty("--control-column-width");
+    return;
+  }
+
+  applyControlColumnWidth(preferredControlColumnWidth, false);
+}
+
+function handleWorkspaceDividerPointerDown(event) {
+  if (!isWorkspaceDividerActive() || (event.pointerType === "mouse" && event.button !== 0)) {
+    return;
+  }
+
+  workspaceDividerDrag = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startWidth: getCurrentControlColumnWidth(),
+  };
+  dom.workspaceDivider.classList.add("is-dragging");
+  document.body.classList.add("workspace-divider-resizing");
+  dom.workspaceDivider.focus({ preventScroll: true });
+
+  if (typeof dom.workspaceDivider.setPointerCapture === "function") {
+    try {
+      dom.workspaceDivider.setPointerCapture(event.pointerId);
+    } catch {}
+  }
+
+  event.preventDefault();
+}
+
+function handleWorkspaceDividerPointerMove(event) {
+  if (!workspaceDividerDrag || event.pointerId !== workspaceDividerDrag.pointerId) {
+    return;
+  }
+
+  const deltaX = event.clientX - workspaceDividerDrag.startClientX;
+  applyControlColumnWidth(workspaceDividerDrag.startWidth + deltaX);
+  event.preventDefault();
+}
+
+function finishWorkspaceDividerDrag(event) {
+  if (!workspaceDividerDrag) {
+    return;
+  }
+  if (event?.pointerId !== undefined && event.pointerId !== workspaceDividerDrag.pointerId) {
+    return;
+  }
+
+  const pointerId = workspaceDividerDrag.pointerId;
+  workspaceDividerDrag = null;
+  dom.workspaceDivider.classList.remove("is-dragging");
+  document.body.classList.remove("workspace-divider-resizing");
+
+  if (
+    event?.type !== "lostpointercapture" &&
+    typeof dom.workspaceDivider.hasPointerCapture === "function" &&
+    dom.workspaceDivider.hasPointerCapture(pointerId)
+  ) {
+    try {
+      dom.workspaceDivider.releasePointerCapture(pointerId);
+    } catch {}
+  }
+}
+
+function handleWorkspaceDividerKeyDown(event) {
+  if (!isWorkspaceDividerActive()) {
+    return;
+  }
+
+  const bounds = getWorkspaceDividerBounds();
+  const currentWidth = getCurrentControlColumnWidth();
+  const step = event.shiftKey ? WORKSPACE_DIVIDER_KEY_STEP * 3 : WORKSPACE_DIVIDER_KEY_STEP;
+  let nextWidth = null;
+
+  switch (event.key) {
+    case "ArrowLeft":
+      nextWidth = currentWidth - step;
+      break;
+    case "ArrowRight":
+      nextWidth = currentWidth + step;
+      break;
+    case "Home":
+      nextWidth = bounds.min;
+      break;
+    case "End":
+      nextWidth = bounds.max;
+      break;
+    default:
+      return;
+  }
+
+  event.preventDefault();
+  applyControlColumnWidth(nextWidth);
 }
 
 function resetViewToDefault() {

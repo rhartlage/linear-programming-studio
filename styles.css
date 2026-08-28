@@ -96,15 +96,70 @@ textarea {
 }
 
 .workspace {
+  --control-column-width: 530px;
   display: grid;
-  gap: 22px;
-  grid-template-columns: minmax(360px, 530px) minmax(0, 1fr);
+  gap: 0;
+  grid-template-columns: var(--control-column-width) 22px minmax(0, 1fr);
 }
 
 .control-column {
   display: grid;
   gap: 18px;
   align-content: start;
+}
+
+.workspace-divider {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 22px;
+  height: clamp(220px, 60vh, 520px);
+  padding-top: 48px;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(22, 33, 51, 0.12) 18%,
+    rgba(22, 33, 51, 0.12) 82%,
+    transparent
+  ) center / 1px 100% no-repeat;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.workspace-divider-grip {
+  display: block;
+  width: 5px;
+  height: 96px;
+  border-radius: 999px;
+  background: rgba(31, 122, 140, 0.42);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.72);
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.workspace-divider:hover .workspace-divider-grip,
+.workspace-divider.is-dragging .workspace-divider-grip,
+.workspace-divider:focus-visible .workspace-divider-grip {
+  background: var(--teal);
+  box-shadow: 0 0 0 4px rgba(31, 122, 140, 0.16);
+}
+
+.workspace-divider:focus-visible {
+  outline: 3px solid rgba(31, 122, 140, 0.36);
+  outline-offset: -3px;
+}
+
+body.workspace-divider-resizing,
+body.workspace-divider-resizing * {
+  cursor: col-resize !important;
+}
+
+body.workspace-divider-resizing {
+  user-select: none;
 }
 
 .panel {
@@ -794,6 +849,11 @@ textarea:focus,
 @media (max-width: 1160px) {
   .workspace {
     grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .workspace-divider {
+    display: none;
   }
 }
 

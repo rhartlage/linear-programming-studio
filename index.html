@@ -38,8 +38,8 @@
         </p>
       </header>
 
-      <main class="workspace">
-        <div class="control-column">
+      <main id="workspace" class="workspace">
+        <div id="control-column" class="control-column">
           <div class="button-row return-link-row">
             <a
               class="button button-secondary spotlight-button return-link-button"
@@ -284,7 +284,24 @@
           </section>
         </div>
 
-        <section class="panel graph-panel">
+        <div
+          id="workspace-divider"
+          class="workspace-divider"
+          role="separator"
+          tabindex="0"
+          aria-label="Resize setup and visualization columns"
+          aria-controls="control-column graph-panel"
+          aria-orientation="vertical"
+          aria-valuemin="360"
+          aria-valuemax="800"
+          aria-valuenow="530"
+          aria-valuetext="Setup column 530 pixels wide"
+          title="Drag to resize the columns. Use Left and Right Arrow keys, Home, or End."
+        >
+          <span class="workspace-divider-grip" aria-hidden="true"></span>
+        </div>
+
+        <section id="graph-panel" class="panel graph-panel">
           <div class="panel-head graph-head">
             <div>
               <p class="section-kicker">Visualization</p>
