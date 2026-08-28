@@ -1,6 +1,8 @@
 # Linear Programming Studio
 
-This is a static 2D linear optimization app designed for GitHub Pages. Students can:
+This repository contains two static linear-optimization teaching apps designed for GitHub Pages and the public tools site.
+
+The 2D explorer at the repository root lets students:
 
 - add and edit linear constraints,
 - enter slope and intercept form for line-based constraints,
@@ -8,15 +10,20 @@ This is a static 2D linear optimization app designed for GitHub Pages. Students 
 - define an objective function,
 - drag the objective line parallel to itself to locate the optimum.
 
+The separate 3D explorer in `3d/` adds a three-variable workflow. Students can edit constraint planes, rotate and pan around the feasible solid, compare maximize and minimize directions, distinguish point/edge/face optima, and snap the objective plane to a finite optimum.
+
 ## Local use
 
-Because the app is plain `HTML`, `CSS`, and `JavaScript`, you can open `index.html` directly in a browser or serve the folder with any static file server.
+Because both apps use browser modules, serve the repository with any static file server. Open `/` for the 2D explorer and `/3d/` for the 3D explorer.
+
+The 3D solver tests can be run from `3d/` with `npm test`, and `npm run check` validates its JavaScript syntax.
 
 ## Public site
 
 The primary public URL is:
 
 - `https://tools.benhartlage.com/linear-programming/`
+- `https://tools.benhartlage.com/linear-programming-3d/`
 
 The original GitHub Pages URL remains a compatibility entry point while the public-site migration is accepted.
 

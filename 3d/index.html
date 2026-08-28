@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Linear Programming Explorer</title>
+    <meta
+      name="description"
+      content="Build three-variable linear programs, inspect their feasible solids, and explore objective planes in an interactive 3D view."
+    />
+    <link rel="canonical" href="https://tools.benhartlage.com/linear-programming-3d/" />
+    <meta property="og:title" content="3D Linear Programming Explorer" />
+    <meta
+      property="og:description"
+      content="A teaching tool for visualizing three-variable linear programs, feasible solids, and objective planes."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tools.benhartlage.com/linear-programming-3d/" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app-shell" class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">3D Linear Programming Explorer</p>
+          <h1>Shape the solid. Move the plane. See the optimum.</h1>
+        </div>
+        <div class="hero-intro">
+          <p>
+            Build a three-variable linear program, rotate its feasible solid,
+            and see how the objective plane reaches a point, edge, or face.
+          </p>
+          <a class="button button-secondary return-link" href="https://tools.benhartlage.com/">
+            Return to Stats &amp; Operations Analysis
+          </a>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section id="model-panel" class="panel model-panel" aria-labelledby="model-panel-title">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Model</p>
+              <h2 id="model-panel-title">Constraints and objective</h2>
+              <p>Enter coefficients for x, y, and z. The analysis and 3D view update together.</p>
+            </div>
+            <button id="restore-example" class="button button-secondary" type="button">
+              Restore example
+            </button>
+          </div>
+
+          <section class="card objective-card" aria-labelledby="objective-title">
+            <div class="card-head">
+              <div>
+                <h3 id="objective-title">Objective function</h3>
+                <p>Set the direction and move its parallel plane through the model.</p>
+              </div>
+            </div>
+
+            <div class="objective-form">
+              <label class="mode-field">
+                <span>Optimization mode</span>
+                <select id="objective-mode">
+                  <option value="max">Maximize</option>
+                  <option value="min">Minimize</option>
+                </select>
+              </label>
+              <label>
+                <span>x coefficient</span>
+                <input id="objective-x" type="number" inputmode="decimal" step="any" value="1" />
+              </label>
+              <label>
+                <span>y coefficient</span>
+                <input id="objective-y" type="number" inputmode="decimal" step="any" value="2" />
+              </label>
+              <label>
+                <span>z coefficient</span>
+                <input id="objective-z" type="number" inputmode="decimal" step="any" value="3" />
+              </label>
+              <label>
+                <span>Objective level</span>
+                <input id="objective-level" type="number" inputmode="decimal" step="any" value="9" />
+              </label>
+            </div>
+
+            <div class="button-row">
+              <button id="snap-optimum" class="button button-primary" type="button">
+                Snap plane to optimum
+              </button>
+            </div>
+          </section>
+
+          <section class="card constraints-card" aria-labelledby="constraints-title">
+            <div class="card-head constraints-head">
+              <div>
+                <h3 id="constraints-title">Constraints</h3>
+                <p>Each row describes a half-space that shapes the feasible solid.</p>
+              </div>
+              <button id="add-constraint" class="button button-primary" type="button">
+                Add constraint
+              </button>
+            </div>
+
+            <div
+              id="constraints-body"
+              class="constraints-body"
+              role="list"
+              aria-label="Model constraints"
+            ></div>
+          </section>
+
+          <section
+            id="analysis-summary"
+            class="card analysis-card"
+            aria-labelledby="analysis-title"
+            aria-live="polite"
+          >
+            <div class="card-head compact">
+              <div>
+                <h3 id="analysis-title">Live analysis</h3>
+                <p>Read the geometry and optimization result without relying on the 3D view alone.</p>
+              </div>
+            </div>
+
+            <div class="status-grid">
+              <article class="status-tile">
+                <span class="status-label">Feasibility</span>
+                <strong id="feasibility-badge" class="status-badge neutral">Checking</strong>
+                <p id="feasibility-text">Waiting for a valid model.</p>
+              </article>
+              <article class="status-tile">
+                <span class="status-label">Feasible region</span>
+                <strong id="region-badge" class="status-badge neutral">Building</strong>
+                <p id="region-text">The solid will appear when the constraints are ready.</p>
+              </article>
+              <article class="status-tile">
+                <span class="status-label">Objective plane</span>
+                <strong id="objective-badge" class="status-badge neutral">Waiting</strong>
+                <p id="objective-text">Enter a nonzero objective direction.</p>
+              </article>
+              <article class="status-tile">
+                <span class="status-label">Optimization result</span>
+                <strong id="optimum-badge" class="status-badge neutral">Not solved</strong>
+                <p id="optimum-text">Snap the objective plane when a finite optimum exists.</p>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section id="viewport-panel" class="panel viewport-panel" aria-labelledby="viewport-title">
+          <div class="panel-head viewport-head">
+            <div>
+              <p class="section-kicker">Visualization</p>
+              <h2 id="viewport-title">Feasible solid and objective plane</h2>
+            </div>
+            <div class="camera-toolbar" role="toolbar" aria-label="3D camera controls">
+              <button id="reset-camera" class="button button-ghost" type="button">
+                Reset
+              </button>
+              <button id="view-front" class="button button-ghost" type="button">
+                Front
+              </button>
+              <button id="view-top" class="button button-ghost" type="button">
+                Top
+              </button>
+              <button id="zoom-out" class="button icon-button" type="button" aria-label="Zoom out">
+                <span aria-hidden="true">−</span>
+              </button>
+              <button id="zoom-in" class="button icon-button" type="button" aria-label="Zoom in">
+                <span aria-hidden="true">+</span>
+              </button>
+            </div>
+          </div>
+
+          <p id="viewport-instructions" class="viewport-instructions">
+            Left-drag to rotate. Right-drag, Shift-drag, or focus the graph and use the arrow keys to pan. Use the wheel or pinch to zoom.
+            From the camera toolbar, use the arrow keys to move between controls and Enter or Space to activate one.
+          </p>
+
+          <div class="viewport-frame">
+            <div
+              id="viewport"
+              class="viewport"
+              role="region"
+              tabindex="0"
+              aria-label="Interactive 3D linear-programming visualization"
+              aria-describedby="viewport-instructions viewport-status"
+            ></div>
+            <div class="viewport-key" aria-hidden="true">
+              <span><i class="key-swatch feasible-swatch"></i>Feasible solid</span>
+              <span><i class="key-swatch objective-swatch"></i>Objective plane</span>
+              <span><i class="key-arrow">→</i>Improving direction</span>
+            </div>
+          </div>
+
+          <p id="viewport-status" class="viewport-status" role="status" aria-live="polite">
+            Preparing the 3D view.
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <template id="constraint-template">
+      <article class="constraint-row" role="listitem" data-constraint-row>
+        <div class="constraint-row-head">
+          <label class="constraint-enabled-control">
+            <input class="constraint-enabled" data-field="enabled" type="checkbox" checked />
+            <span>Enabled</span>
+          </label>
+          <label class="constraint-name-control">
+            <span>Name</span>
+            <input
+              class="constraint-name"
+              data-field="name"
+              type="text"
+              autocomplete="off"
+              aria-label="Constraint name"
+            />
+          </label>
+          <button
+            class="button button-ghost constraint-remove"
+            data-action="remove"
+            type="button"
+            aria-label="Remove constraint"
+          >
+            Remove
+          </button>
+        </div>
+
+        <div class="constraint-equation-grid">
+          <label>
+            <span>x coefficient</span>
+            <input class="constraint-a" data-field="a" type="number" inputmode="decimal" step="any" />
+          </label>
+          <label>
+            <span>y coefficient</span>
+            <input class="constraint-b" data-field="b" type="number" inputmode="decimal" step="any" />
+          </label>
+          <label>
+            <span>z coefficient</span>
+            <input class="constraint-c" data-field="c" type="number" inputmode="decimal" step="any" />
+          </label>
+          <label>
+            <span>Relation</span>
+            <select class="constraint-relation" data-field="relation" aria-label="Constraint relation">
+              <option value="&lt;=">≤</option>
+              <option value="&gt;=">≥</option>
+              <option value="=">=</option>
+            </select>
+          </label>
+          <label>
+            <span>Right side</span>
+            <input class="constraint-rhs" data-field="rhs" type="number" inputmode="decimal" step="any" />
+          </label>
+        </div>
+      </article>
+    </template>
+
+    <noscript>
+      <p class="noscript-message">This interactive explorer requires JavaScript.</p>
+    </noscript>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

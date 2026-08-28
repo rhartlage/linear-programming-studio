@@ -1,0 +1,9 @@
+{
+  "name": "linear-programming-studio-3d",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test solver.test.mjs",
+    "check": "node --check app.js && node --check renderer.js && node --check solver.js"
+  }
+}
