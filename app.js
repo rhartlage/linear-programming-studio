@@ -2,6 +2,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const EPSILON = 1e-7;
 const PLOT_BOX = { x: 74, y: 26, width: 612, height: 612 };
 const FEASIBLE_ARROW = { anchorRatio: 0.35, length: 22, headLength: 7, headWidth: 6 };
+const OBJECTIVE_IMPROVEMENT_ARROW = { anchorRatio: 0.7, length: 28, headLength: 9, headWidth: 9 };
 const MIN_SLOPE_DX_RATIO = 0.015;
 const MIN_VIEW_SPAN = 0.5;
 const ZOOM_IN_FACTOR = 0.8;
@@ -2856,6 +2857,7 @@ function drawObjectiveLine(group, analysis) {
   }
 
   const lineLayer = svgGroup();
+  const improvementArrowLayer = svgGroup();
   const handleLayer = svgGroup();
   const labelLayer = svgGroup();
   const translateSegment = insetSvgSegment(analysis.currentLineSegment.start, analysis.currentLineSegment.end, 18);
@@ -2932,12 +2934,119 @@ function drawObjectiveLine(group, analysis) {
 
   lineLayer.appendChild(hitLine);
   lineLayer.appendChild(visibleLine);
+  drawObjectiveImprovementArrow(improvementArrowLayer, analysis);
   handleLayer.appendChild(handle);
   labelLayer.appendChild(label);
 
   group.appendChild(lineLayer);
+  group.appendChild(improvementArrowLayer);
   group.appendChild(handleLayer);
   group.appendChild(labelLayer);
+}
+
+function drawObjectiveImprovementArrow(group, analysis) {
+  const geometry = getObjectiveImprovementArrowGeometry(
+    analysis.currentLineSegment,
+    analysis.objective,
+    state.objective.mode,
+    analysis.view
+  );
+  if (!geometry) {
+    return;
+  }
+
+  const arrowGroup = svgGroup();
+  arrowGroup.setAttribute("data-objective-improvement-arrow", "");
+  arrowGroup.setAttribute("data-objective-mode", state.objective.mode);
+  arrowGroup.setAttribute("data-objective-direction", state.objective.mode === "min" ? "decrease" : "increase");
+  arrowGroup.setAttribute("aria-hidden", "true");
+  arrowGroup.setAttribute("pointer-events", "none");
+
+  arrowGroup.appendChild(
+    svgElement("line", {
+      x1: geometry.tail.x,
+      y1: geometry.tail.y,
+      x2: geometry.shaftEnd.x,
+      y2: geometry.shaftEnd.y,
+      stroke: "rgba(255,255,255,0.94)",
+      "stroke-width": 7,
+      "stroke-linecap": "round",
+    })
+  );
+
+  arrowGroup.appendChild(
+    svgElement("line", {
+      x1: geometry.tail.x,
+      y1: geometry.tail.y,
+      x2: geometry.shaftEnd.x,
+      y2: geometry.shaftEnd.y,
+      stroke: "#8F5F00",
+      "stroke-width": 3,
+      "stroke-linecap": "round",
+    })
+  );
+
+  arrowGroup.appendChild(
+    svgElement("polygon", {
+      points: [geometry.tip, geometry.headLeft, geometry.headRight]
+        .map((point) => `${point.x},${point.y}`)
+        .join(" "),
+      fill: "#F5A623",
+      stroke: "#8F5F00",
+      "stroke-width": 2,
+      "stroke-linejoin": "round",
+    })
+  );
+
+  group.appendChild(arrowGroup);
+}
+
+function getObjectiveImprovementArrowGeometry(segment, objective, mode, view) {
+  const dx = segment.end.x - segment.start.x;
+  const dy = segment.end.y - segment.start.y;
+  const segmentLength = Math.hypot(dx, dy);
+  if (segmentLength <= EPSILON) {
+    return null;
+  }
+
+  const tangent = { x: dx / segmentLength, y: dy / segmentLength };
+  let normal = { x: -tangent.y, y: tangent.x };
+  const anchor = {
+    x: segment.start.x + dx * OBJECTIVE_IMPROVEMENT_ARROW.anchorRatio,
+    y: segment.start.y + dy * OBJECTIVE_IMPROVEMENT_ARROW.anchorRatio,
+  };
+  const anchorWorld = svgToWorld(anchor.x, anchor.y, view);
+  const testWorld = svgToWorld(anchor.x + normal.x * 4, anchor.y + normal.y * 4, view);
+  const objectiveDelta = evaluateObjective(testWorld, objective) - evaluateObjective(anchorWorld, objective);
+  const improvementSign = mode === "min" ? -1 : 1;
+
+  if (objectiveDelta * improvementSign < 0) {
+    normal = { x: -normal.x, y: -normal.y };
+  }
+
+  const tip = {
+    x: anchor.x + normal.x * OBJECTIVE_IMPROVEMENT_ARROW.length,
+    y: anchor.y + normal.y * OBJECTIVE_IMPROVEMENT_ARROW.length,
+  };
+  const shaftEnd = {
+    x: tip.x - normal.x * OBJECTIVE_IMPROVEMENT_ARROW.headLength,
+    y: tip.y - normal.y * OBJECTIVE_IMPROVEMENT_ARROW.headLength,
+  };
+  const headHalfWidth = OBJECTIVE_IMPROVEMENT_ARROW.headWidth / 2;
+
+  return {
+    tail: anchor,
+    shaftEnd,
+    tip,
+    headLeft: {
+      x: shaftEnd.x - normal.y * headHalfWidth,
+      y: shaftEnd.y + normal.x * headHalfWidth,
+    },
+    headRight: {
+      x: shaftEnd.x + normal.y * headHalfWidth,
+      y: shaftEnd.y - normal.x * headHalfWidth,
+    },
+  };
 }
 
 function drawOptimizationOverlay(group, analysis) {
