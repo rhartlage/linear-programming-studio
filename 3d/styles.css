@@ -502,7 +502,7 @@ select:focus {
 .viewport {
   position: relative;
   width: 100%;
-  min-height: clamp(500px, 70vh, 800px);
+  height: clamp(500px, 70vh, 800px);
   overflow: hidden;
   touch-action: none;
   cursor: grab;
@@ -620,7 +620,7 @@ select:focus {
   }
 
   .viewport {
-    min-height: clamp(460px, 66vh, 700px);
+    height: clamp(460px, 66vh, 700px);
   }
 }
 
@@ -685,7 +685,7 @@ select:focus {
   }
 
   .viewport {
-    min-height: min(62svh, 520px);
+    height: min(62svh, 520px);
   }
 
   .viewport-key {
