@@ -173,8 +173,9 @@
           </div>
 
           <p id="viewport-instructions" class="viewport-instructions">
-            Left-drag to rotate. Right-drag, Shift-drag, or focus the graph and use the arrow keys to pan. Use the wheel or pinch to zoom.
-            From the camera toolbar, use the arrow keys to move between controls and Enter or Space to activate one.
+            Drag a colored round handle to move that constraint plane, or drag the gold diamond handle to move the objective plane.
+            Drag elsewhere to rotate. Right-drag, Shift-drag, or focus the graph and use the arrow keys to pan; use the wheel or pinch to zoom.
+            Use the right-side and objective-level fields for precise or keyboard entry. From the camera toolbar, use the arrow keys to move between controls and Enter or Space to activate one.
           </p>
 
           <div class="viewport-frame">
@@ -186,9 +187,12 @@
               aria-label="Interactive 3D linear-programming visualization"
               aria-describedby="viewport-instructions viewport-status"
             ></div>
+            <div id="plane-drag-readout" class="plane-drag-readout" aria-hidden="true" hidden></div>
             <div class="viewport-key" aria-hidden="true">
               <span><i class="key-swatch feasible-swatch"></i>Feasible solid</span>
               <span><i class="key-swatch objective-swatch"></i>Objective plane</span>
+              <span><i class="key-handle constraint-handle-key"></i>Move constraint</span>
+              <span><i class="key-handle objective-handle-key"></i>Move objective</span>
               <span><i class="key-arrow">→</i>Improving direction</span>
             </div>
           </div>

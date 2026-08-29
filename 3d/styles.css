@@ -189,6 +189,13 @@ select:disabled {
     var(--gold-soft);
 }
 
+.objective-card.is-directly-edited,
+.constraint-row.is-directly-edited {
+  outline: 3px solid rgba(31, 122, 140, 0.28);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(31, 122, 140, 0.08);
+}
+
 .card-head h3 {
   font-size: 1.12rem;
   letter-spacing: -0.015em;
@@ -512,11 +519,37 @@ select:focus {
   cursor: grabbing;
 }
 
+.viewport.is-handle-hovered {
+  cursor: move;
+}
+
+.viewport.is-plane-dragging {
+  cursor: grabbing;
+}
+
 .viewport canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
   outline: none;
+}
+
+.plane-drag-readout {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  max-width: calc(100% - 24px);
+  padding: 9px 12px;
+  border: 1px solid rgba(31, 122, 140, 0.28);
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(255, 252, 247, 0.94);
+  box-shadow: 0 8px 24px rgba(20, 28, 44, 0.12);
+  backdrop-filter: blur(10px);
+  font-size: 0.8rem;
+  font-weight: 800;
+  pointer-events: none;
 }
 
 .viewport-key {
@@ -550,6 +583,24 @@ select:focus {
   width: 13px;
   height: 13px;
   border-radius: 4px;
+}
+
+.key-handle {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  background: var(--teal);
+  box-shadow: 0 0 0 1px rgba(22, 33, 51, 0.28);
+}
+
+.constraint-handle-key {
+  border-radius: 50%;
+}
+
+.objective-handle-key {
+  background: var(--gold);
+  transform: rotate(45deg) scale(0.82);
 }
 
 .feasible-swatch {

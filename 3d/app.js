@@ -58,6 +58,7 @@ const dom = {
   optimumText: requireElement("optimum-text"),
   viewport: requireElement("viewport"),
   viewportStatus: requireElement("viewport-status"),
+  planeDragReadout: requireElement("plane-drag-readout"),
   resetCamera: requireElement("reset-camera"),
   viewFront: requireElement("view-front"),
   viewTop: requireElement("view-top"),
@@ -91,7 +92,10 @@ function initialize() {
 
 function initializeRenderer() {
   try {
-    renderer = new LP3DRenderer(dom.viewport, dom.viewportStatus);
+    renderer = new LP3DRenderer(dom.viewport, dom.viewportStatus, {
+      onPlaneDrag: handleDirectPlaneDrag,
+      readoutElement: dom.planeDragReadout,
+    });
     const canvas = dom.viewport.querySelector("canvas");
     if (canvas) {
       // The labelled viewport is the single keyboard stop; pointer controls
@@ -241,6 +245,36 @@ function useRenderer(action) {
   action(renderer);
 }
 
+function handleDirectPlaneDrag({ kind, constraintId, value, phase }) {
+  const row = kind === "constraint"
+    ? Array.from(dom.constraintsBody.querySelectorAll("[data-constraint-row]"))
+      .find((candidate) => candidate.dataset.constraintId === String(constraintId))
+    : null;
+  const input = kind === "objective"
+    ? dom.objectiveLevel
+    : row?.querySelector('[data-field="rhs"]');
+
+  document.querySelector(".objective-card")?.classList.toggle("is-directly-edited", kind === "objective" && !["end", "cancel"].includes(phase));
+  dom.constraintsBody.querySelectorAll("[data-constraint-row]").forEach((candidate) => {
+    candidate.classList.toggle("is-directly-edited", candidate === row && !["end", "cancel"].includes(phase));
+  });
+
+  if (phase === "start") {
+    state.lastAction = kind === "objective" ? "drag-objective-plane-start" : "drag-constraint-plane-start";
+    return;
+  }
+  if (!input || !Number.isFinite(value)) return;
+
+  setInputValue(input, value);
+  state.lastAction = kind === "objective" ? "drag-objective-plane" : "drag-constraint-plane";
+  if (phase === "move") {
+    scheduleAnalysis(state.lastAction);
+    return;
+  }
+  cancelScheduledAnalysis();
+  updateAnalysis();
+}
+
 function loadModel(model, { resetCamera = false, action = "load-model" } = {}) {
   cancelScheduledAnalysis();
   state.lastAction = action;
@@ -326,6 +360,7 @@ function updateAnalysis({ resetCamera = false, focusOptimum = false } = {}) {
   if (errors.length) {
     state.valid = false;
     state.error = errors[0].message;
+    renderer?.setPlaneInteractionEnabled(false, errors[0].message);
     updateInvalidStatuses(errors[0].message);
     return null;
   }
@@ -335,6 +370,7 @@ function updateAnalysis({ resetCamera = false, focusOptimum = false } = {}) {
     state.analysis = analysis;
     state.valid = true;
     state.error = null;
+    renderer?.setPlaneInteractionEnabled(true);
     updateAnalysisStatuses(analysis);
 
     if (renderer) {

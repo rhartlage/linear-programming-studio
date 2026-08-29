@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test solver.test.mjs",
+    "test": "node --test solver.test.mjs renderer.test.mjs",
     "check": "node --check app.js && node --check renderer.js && node --check solver.js"
   }
 }
