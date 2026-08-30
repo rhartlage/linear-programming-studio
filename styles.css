@@ -821,9 +821,103 @@ textarea:focus,
 }
 
 .plot-control-stack {
-  display: inline-grid;
-  gap: 10px;
-  justify-self: end;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plot-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.axis-equal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.axis-equal-toggle input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--teal);
+}
+
+.axis-settings {
+  max-width: 100%;
+  margin-left: auto;
+}
+
+.axis-settings[open] {
+  flex-basis: 100%;
+  min-width: 0;
+  margin-left: 0;
+}
+
+.axis-settings summary {
+  width: fit-content;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.axis-settings summary:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+
+.axis-settings-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-strong);
+}
+
+.axis-range-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.axis-range-grid label,
+.axis-range-grid input {
+  min-width: 0;
+}
+
+.axis-range-grid input[aria-invalid="true"] {
+  border-color: var(--danger);
+  outline-color: var(--danger);
+}
+
+.axis-settings-body p,
+.view-status {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.axis-keyboard-hint {
+  flex: 1 1 150px;
+  align-self: center;
+}
+
+.axis-settings-body .axis-range-error {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 .plot-shell {

@@ -4,7 +4,8 @@ const PLOT_BOX = { x: 74, y: 26, width: 612, height: 612 };
 const FEASIBLE_ARROW = { anchorRatio: 0.35, length: 22, headLength: 7, headWidth: 6 };
 const OBJECTIVE_IMPROVEMENT_ARROW = { anchorRatio: 0.7, length: 28, headLength: 9, headWidth: 9 };
 const MIN_SLOPE_DX_RATIO = 0.015;
-const MIN_VIEW_SPAN = 0.5;
+const MIN_VIEW_SPAN = 0.0001;
+const MAX_VIEW_COORDINATE = 1e9;
 const ZOOM_IN_FACTOR = 0.8;
 const ZOOM_OUT_FACTOR = 1.25;
 const MIN_TABLE_SHEET_ROWS = 6;
@@ -88,6 +89,15 @@ const dom = {
   objectiveLevel: document.getElementById("objective-level"),
   snapOptimum: document.getElementById("snap-optimum"),
   resetViewInline: document.getElementById("reset-view-inline"),
+  equalAxisUnits: document.getElementById("equal-axis-units"),
+  axisSettings: document.getElementById("axis-settings"),
+  axisXMin: document.getElementById("axis-x-min"),
+  axisXMax: document.getElementById("axis-x-max"),
+  axisYMin: document.getElementById("axis-y-min"),
+  axisYMax: document.getElementById("axis-y-max"),
+  applyAxisRanges: document.getElementById("apply-axis-ranges"),
+  axisRangeError: document.getElementById("axis-range-error"),
+  viewStatus: document.getElementById("view-status"),
   feasibilityBadge: document.getElementById("feasibility-badge"),
   feasibilityText: document.getElementById("feasibility-text"),
   objectiveBadge: document.getElementById("objective-badge"),
@@ -119,6 +129,7 @@ const EXAMPLE_PROBLEM = {
 
 const state = {
   constraints: [],
+  viewSettings: { equalUnits: true },
   objective: {
     mode: "max",
     xCoeff: "0.75",
@@ -141,6 +152,8 @@ let modelPreview = null;
 let workspaceDividerDrag = null;
 let preferredControlColumnWidth = CONTROL_COLUMN_DEFAULT_WIDTH;
 let workspaceResizeObserver = null;
+let axisRangeDraftDirty = false;
+let viewNotice = "";
 
 initialize();
 
@@ -310,12 +323,7 @@ function handleWorkspaceDividerKeyDown(event) {
 }
 
 function resetViewToDefault() {
-  const nextView = getResetView();
-  if (nextView) {
-    setViewWindow(nextView);
-  } else {
-    state.view = { ...EXAMPLE_PROBLEM.view };
-  }
+  autoFitViewToConstraints(state.constraints);
   syncViewInputs();
   refresh();
 }
@@ -533,6 +541,24 @@ function bindStaticEvents() {
   });
 
   dom.resetViewInline.addEventListener("click", resetViewToDefault);
+  dom.equalAxisUnits.addEventListener("change", handleEqualAxisUnitsChange);
+  dom.applyAxisRanges.addEventListener("click", applyAxisRanges);
+  Object.values(getAxisRangeInputs()).forEach((input) => {
+    input.addEventListener("input", () => {
+      axisRangeDraftDirty = true;
+      clearAxisRangeError();
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyAxisRanges();
+      } else if (event.key === "Escape") {
+        axisRangeDraftDirty = false;
+        clearAxisRangeError();
+        syncViewInputs();
+      }
+    });
+  });
 
   dom.snapOptimum.addEventListener("click", () => {
     const analysis = getAnalysis();
@@ -729,6 +755,7 @@ function handlePlotPointerMove(event) {
       yMin: dragState.startView.yMin - dy,
       yMax: dragState.startView.yMax - dy,
     });
+    viewNotice = "Custom view. Use Fit feasible region to frame the model again.";
     syncViewInputs();
     refresh(false);
     return;
@@ -892,8 +919,10 @@ function zoomView(factor, anchorWorld = null) {
   const view = getViewWindow();
   const spanX = Math.max(view.xMax - view.xMin, MIN_VIEW_SPAN);
   const spanY = Math.max(view.yMax - view.yMin, MIN_VIEW_SPAN);
-  const nextSpanX = Math.max(spanX * factor, MIN_VIEW_SPAN);
-  const nextSpanY = Math.max(spanY * factor, MIN_VIEW_SPAN);
+  // Keep the selected axis ratio even when one axis reaches the zoom limit.
+  const effectiveFactor = Math.max(factor, MIN_VIEW_SPAN / spanX, MIN_VIEW_SPAN / spanY);
+  const nextSpanX = spanX * effectiveFactor;
+  const nextSpanY = spanY * effectiveFactor;
   const focusX = anchorWorld?.x ?? (view.xMin + view.xMax) / 2;
   const focusY = anchorWorld?.y ?? (view.yMin + view.yMax) / 2;
   const focusRatioX = spanX <= EPSILON ? 0.5 : (focusX - view.xMin) / spanX;
@@ -905,6 +934,7 @@ function zoomView(factor, anchorWorld = null) {
     yMin: focusY - focusRatioY * nextSpanY,
     yMax: focusY + (1 - focusRatioY) * nextSpanY,
   });
+  viewNotice = "Custom view. Use Fit feasible region to frame the model again.";
   syncViewInputs();
   refresh(false);
 }
@@ -997,9 +1027,7 @@ function applyParsedModel(preview) {
     state.objective.level = formatEditableNumber(preview.objective.level ?? 0);
   }
 
-  if (state.constraints.length) {
-    autoFitViewToConstraints(state.constraints);
-  }
+  autoFitViewToConstraints(state.constraints);
 
   renderConstraintList();
   clampObjectiveToFeasibleRange();
@@ -1993,7 +2021,8 @@ function formatVariableTerm(coefficient, variableName) {
 function loadExampleProblem() {
   state.constraints = EXAMPLE_PROBLEM.constraints.map((constraint) => createConstraint(constraint));
   state.objective = { ...EXAMPLE_PROBLEM.objective };
-  state.view = { ...EXAMPLE_PROBLEM.view };
+  state.viewSettings.equalUnits = true;
+  autoFitViewToConstraints(state.constraints);
   syncObjectiveInputs();
   syncViewInputs();
   renderConstraintList();
@@ -2142,7 +2171,107 @@ function syncObjectiveInputs() {
 }
 
 function syncViewInputs() {
-  // The graph window is now controlled directly from the plot via pan/zoom.
+  if (!axisRangeDraftDirty) {
+    const view = getViewWindow();
+    Object.entries(getAxisRangeInputs()).forEach(([key, input]) => {
+      input.value = formatViewBound(view[key]);
+    });
+  }
+  dom.equalAxisUnits.checked = state.viewSettings.equalUnits;
+  if (dom.viewStatus.textContent !== viewNotice) {
+    dom.viewStatus.textContent = viewNotice;
+  }
+}
+
+function getAxisRangeInputs() {
+  return { xMin: dom.axisXMin, xMax: dom.axisXMax, yMin: dom.axisYMin, yMax: dom.axisYMax };
+}
+
+function clearAxisRangeError() {
+  dom.axisRangeError.textContent = "";
+  dom.axisRangeError.hidden = true;
+  Object.values(getAxisRangeInputs()).forEach((input) => input.removeAttribute("aria-invalid"));
+}
+
+function showAxisRangeError(error, invalidFields = []) {
+  dom.axisSettings.open = true;
+  dom.axisRangeError.hidden = false;
+  dom.axisRangeError.textContent = error;
+  const inputs = getAxisRangeInputs();
+  invalidFields.forEach((key) => inputs[key].setAttribute("aria-invalid", "true"));
+  inputs[invalidFields[0]]?.focus();
+}
+
+function parseAxisRanges(values) {
+  const view = {};
+  for (const key of ["xMin", "xMax", "yMin", "yMax"]) {
+    const raw = String(values[key] ?? "").trim();
+    const value = raw === "" ? Number.NaN : Number(raw);
+    if (!Number.isFinite(value) || Math.abs(value) > MAX_VIEW_COORDINATE) {
+      return {
+        view: null,
+        error: "Enter a finite number between -1,000,000,000 and 1,000,000,000 for every bound.",
+        invalidFields: [key],
+      };
+    }
+    view[key] = value;
+  }
+  for (const axis of ["x", "y"]) {
+    const minKey = `${axis}Min`;
+    const maxKey = `${axis}Max`;
+    if (view[maxKey] <= view[minKey]) {
+      return { view: null, error: `The ${axis} maximum must be greater than its minimum.`, invalidFields: [minKey, maxKey] };
+    }
+    if (view[maxKey] - view[minKey] < MIN_VIEW_SPAN * (1 - EPSILON)) {
+      return { view: null, error: `The ${axis} range must span at least ${MIN_VIEW_SPAN} units.`, invalidFields: [minKey, maxKey] };
+    }
+  }
+  return { view, error: null, invalidFields: [] };
+}
+
+function applyAxisRanges() {
+  clearAxisRangeError();
+  const values = Object.fromEntries(Object.entries(getAxisRangeInputs()).map(([key, input]) => [key, input.value]));
+  const parsed = parseAxisRanges(values);
+  if (parsed.error) {
+    showAxisRangeError(parsed.error, parsed.invalidFields);
+    return;
+  }
+  const nextView = state.viewSettings.equalUnits ? equalizeViewBounds(parsed.view) : parsed.view;
+  const checked = parseAxisRanges(nextView);
+  if (checked.error) {
+    showAxisRangeError("Equal units would extend a bound beyond the supported range. Turn off Equal axis units or use smaller ranges.");
+    return;
+  }
+  const expanded = Object.keys(nextView).some((key) => Math.abs(nextView[key] - parsed.view[key]) > EPSILON);
+  setViewWindow(nextView);
+  axisRangeDraftDirty = false;
+  viewNotice = expanded
+    ? "Custom ranges applied. The shorter range was expanded to keep equal axis units."
+    : "Custom ranges applied. The view stays fixed while you edit or drag.";
+  syncViewInputs();
+  refresh();
+}
+
+function handleEqualAxisUnitsChange() {
+  const equalUnits = dom.equalAxisUnits.checked;
+  const nextView = equalUnits ? equalizeViewBounds(getViewWindow()) : getViewWindow();
+  if (equalUnits && parseAxisRanges(nextView).error) {
+    dom.equalAxisUnits.checked = state.viewSettings.equalUnits;
+    showAxisRangeError("This view is too large for equal units. Fit the feasible region or apply smaller ranges first.");
+    return;
+  }
+  state.viewSettings.equalUnits = equalUnits;
+  setViewWindow(nextView);
+  clearAxisRangeError();
+  viewNotice = equalUnits
+    ? "Equal axis units enabled. One x-unit and one y-unit have the same screen length."
+    : "Independent axis ranges enabled. Fit the region or apply your own ranges.";
+  if (axisRangeDraftDirty) {
+    viewNotice += " Apply ranges to use your entered bounds.";
+  }
+  syncViewInputs();
+  refresh();
 }
 
 function refresh(syncInputs = true) {
@@ -3122,7 +3251,7 @@ function drawAxisLabels(group, view) {
         fill: "rgba(22,33,51,0.72)",
         "font-size": 13,
         "text-anchor": "middle",
-      }, formatNumber(tick))
+      }, formatViewBound(tick))
     );
   });
 
@@ -3135,7 +3264,7 @@ function drawAxisLabels(group, view) {
         fill: "rgba(22,33,51,0.72)",
         "font-size": 13,
         "text-anchor": "end",
-      }, formatNumber(tick))
+      }, formatViewBound(tick))
     );
   });
 
@@ -3183,10 +3312,29 @@ function getViewWindow() {
 }
 
 function setViewWindow(view) {
-  state.view.xMin = formatNumber(view.xMin);
-  state.view.xMax = formatNumber(view.xMax);
-  state.view.yMin = formatNumber(view.yMin);
-  state.view.yMax = formatNumber(view.yMax);
+  // Preserve small custom windows instead of rounding their bounds to four decimals.
+  state.view.xMin = formatViewBound(view.xMin);
+  state.view.xMax = formatViewBound(view.xMax);
+  state.view.yMin = formatViewBound(view.yMin);
+  state.view.yMax = formatViewBound(view.yMax);
+}
+
+function formatViewBound(value) {
+  return value.toString();
+}
+
+function equalizeViewBounds(view) {
+  const spanX = Math.max(view.xMax - view.xMin, MIN_VIEW_SPAN);
+  const spanY = Math.max(view.yMax - view.yMin, MIN_VIEW_SPAN);
+  const aspect = PLOT_BOX.width / PLOT_BOX.height;
+  const extraX = Math.max(0, spanY * aspect - spanX) / 2;
+  const extraY = Math.max(0, spanX / aspect - spanY) / 2;
+  return {
+    xMin: view.xMin - extraX,
+    xMax: view.xMax + extraX,
+    yMin: view.yMin - extraY,
+    yMax: view.yMax + extraY,
+  };
 }
 
 function getObjectiveCoefficients() {
@@ -3202,67 +3350,94 @@ function getObjectiveMagnitude() {
 }
 
 function autoFitViewToConstraints(constraints) {
-  const nextView = computeConstraintFitBounds(constraints);
-  if (!nextView) {
-    return;
-  }
-
-  setViewWindow(nextView);
+  const fit = computeAutomaticView(constraints, state.viewSettings.equalUnits);
+  setViewWindow(fit.view);
+  axisRangeDraftDirty = false;
+  clearAxisRangeError();
+  viewNotice = fit.kind === "feasible"
+    ? "Fitted to the feasible region. The view stays fixed while you edit or drag."
+    : fit.kind === "empty"
+      ? "No active constraints. Showing the default window."
+      : "Constraint overview: the full region could not be fitted. Pan, zoom, or set axis ranges.";
 }
 
 function getResetView() {
-  const baseView = computeConstraintFitBounds(state.constraints) ?? getExampleViewWindow();
-  if (!state.constraints.length) {
-    return baseView;
-  }
+  return computeConstraintFitBounds(state.constraints, state.viewSettings.equalUnits);
+}
 
-  const halfPlanes = state.constraints
+function computeConstraintFitBounds(constraints, equalUnits = true) {
+  return computeAutomaticView(constraints, equalUnits).view;
+}
+
+function computeAutomaticView(constraints, equalUnits = true) {
+  const halfPlanes = constraints
+    .filter((constraint) => constraint.enabled)
     .map(convertConstraintToHalfPlane)
     .filter(Boolean);
   if (!halfPlanes.length) {
-    return baseView;
+    return { view: getExampleViewWindow(), kind: "empty" };
   }
 
-  const objective = getObjectiveCoefficients();
-  if (Math.hypot(objective.x, objective.y) <= EPSILON) {
-    return baseView;
-  }
-
-  const visiblePolygon = clipPolygon(makeRectangle(baseView.xMin, baseView.xMax, baseView.yMin, baseView.yMax), halfPlanes);
-  const worldRadius = computeWorldRadius(baseView, halfPlanes);
-  const worldPolygon = clipPolygon(makeRectangle(-worldRadius, worldRadius, -worldRadius, worldRadius), halfPlanes);
-  const optimization = analyzeOptimization({
-    halfPlanes,
-    worldPolygon,
-    visiblePolygon,
-    view: baseView,
-    objective,
-  });
-
-  if (optimization.status !== "bounded" || !optimization.bestContacts.length) {
-    return baseView;
-  }
-
-  const currentLevel = toNumber(state.objective.level, 0);
-  const pointsToInclude = [...optimization.bestContacts];
-
-  if (Math.abs(currentLevel - optimization.bestValue) > 5e-4) {
-    optimization.bestContacts.forEach((point) => {
-      const projectedPoint = projectPointToObjectiveLevel(point, objective, currentLevel);
-      if (projectedPoint) {
-        pointsToInclude.push(projectedPoint);
+  // A bounded feasible region has real boundary vertices, including points/segments.
+  // Never fit to the artificial corners of the solver's large clipping rectangle.
+  if (isRegionBounded(halfPlanes)) {
+    const vertices = [];
+    for (let index = 0; index < halfPlanes.length; index += 1) {
+      for (let other = index + 1; other < halfPlanes.length; other += 1) {
+        const point = lineLineIntersection(halfPlanes[index].line, halfPlanes[other].line);
+        if (point && Number.isFinite(point.x) && Number.isFinite(point.y) &&
+            halfPlanes.every((halfPlane) => satisfiesHalfPlane(point, halfPlane))) {
+          vertices.push(point);
+        }
       }
-    });
+    }
+    if (vertices.length) {
+      const view = makeFeasibleFitView(vertices, equalUnits);
+      if (!parseAxisRanges(view).error) {
+        return { view, kind: "feasible" };
+      }
+    }
   }
 
-  return expandViewBoundsToIncludePoints(baseView, pointsToInclude);
+  // Unbounded or infeasible models still need a finite, useful constraint overview.
+  const contextView = computeConstraintContextBounds(halfPlanes) ?? getExampleViewWindow();
+  const view = equalUnits ? equalizeViewBounds(contextView) : contextView;
+  return { view: parseAxisRanges(view).error ? getExampleViewWindow() : view, kind: "fallback" };
 }
 
-function computeConstraintFitBounds(constraints) {
-  const lines = constraints
-    .map(convertConstraintToHalfPlane)
-    .filter(Boolean)
-    .map((halfPlane) => halfPlane.line);
+function makeFeasibleFitView(points, equalUnits) {
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  const rawSpanX = maxX - minX;
+  const rawSpanY = maxY - minY;
+  // Give a lone point or an axis-aligned segment some surrounding context.
+  let spanX = Math.max(rawSpanX || Math.max(rawSpanY * 0.1, 1), MIN_VIEW_SPAN);
+  let spanY = Math.max(rawSpanY || Math.max(rawSpanX * 0.1, 1), MIN_VIEW_SPAN);
+  if (equalUnits) {
+    const aspect = PLOT_BOX.width / PLOT_BOX.height;
+    spanX = Math.max(spanX, spanY * aspect);
+    spanY = spanX / aspect;
+  }
+  const paddedRange = (minimum, maximum, span) => {
+    // Align nonnegative axes at the same margin without pulling distant regions to zero.
+    if (Math.abs(minimum) <= EPSILON && maximum > EPSILON) {
+      return [-span * 0.1, span + span * 0.1];
+    }
+    if (Math.abs(maximum) <= EPSILON && minimum < -EPSILON) {
+      return [-span - span * 0.1, span * 0.1];
+    }
+    const center = (minimum + maximum) / 2;
+    return [center - span * 0.6, center + span * 0.6];
+  };
+  const [xMin, xMax] = paddedRange(minX, maxX, spanX);
+  const [yMin, yMax] = paddedRange(minY, maxY, spanY);
+  return { xMin, xMax, yMin, yMax };
+}
+
+function computeConstraintContextBounds(halfPlanes) {
+  const lines = halfPlanes.map((halfPlane) => halfPlane.line);
   const points = [{ x: 0, y: 0 }];
 
   lines.forEach((line) => {

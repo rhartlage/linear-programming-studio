@@ -22,7 +22,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260830-hybrid-view" />
   </head>
   <body>
     <div class="page-shell">
@@ -307,13 +307,37 @@
               <p class="section-kicker">Visualization</p>
               <h2>Feasible region and objective line</h2>
             </div>
-            <p class="graph-hint">Drag the graph to pan, use your mouse wheel to scale the window, and move the colored lines directly on the plot.</p>
+            <p class="graph-hint">Fit the feasible region, set your own axis ranges, or pan and zoom. Move the colored lines directly on the plot.</p>
           </div>
 
           <div class="plot-control-stack">
-            <button id="reset-view-inline" class="button button-ghost plot-reset-button" type="button">
-              Reset view
-            </button>
+            <div class="plot-toolbar">
+              <button id="reset-view-inline" class="button button-ghost plot-reset-button" type="button" aria-controls="plot">
+                Fit feasible region
+              </button>
+              <label class="axis-equal-toggle">
+                <input id="equal-axis-units" type="checkbox" checked aria-describedby="axis-range-help" />
+                <span>Equal axis units</span>
+              </label>
+              <details id="axis-settings" class="axis-settings">
+                <summary>Axis ranges</summary>
+                <div class="axis-settings-body">
+                  <p id="axis-range-help">With equal units on, one x-unit and one y-unit have the same screen length. The shorter entered range expands to match. Turn this off to use both ranges exactly.</p>
+                  <div class="axis-range-grid">
+                    <label for="axis-x-min"><span>x minimum</span><input id="axis-x-min" type="number" step="any" inputmode="decimal" aria-describedby="axis-range-error" /></label>
+                    <label for="axis-x-max"><span>x maximum</span><input id="axis-x-max" type="number" step="any" inputmode="decimal" aria-describedby="axis-range-error" /></label>
+                    <label for="axis-y-min"><span>y minimum</span><input id="axis-y-min" type="number" step="any" inputmode="decimal" aria-describedby="axis-range-error" /></label>
+                    <label for="axis-y-max"><span>y maximum</span><input id="axis-y-max" type="number" step="any" inputmode="decimal" aria-describedby="axis-range-error" /></label>
+                  </div>
+                  <div class="button-row">
+                    <button id="apply-axis-ranges" class="button button-secondary" type="button" aria-controls="plot">Apply ranges</button>
+                    <p class="axis-keyboard-hint">Enter applies. Escape restores the current bounds.</p>
+                  </div>
+                  <p id="axis-range-error" class="axis-range-error" role="alert" hidden></p>
+                </div>
+              </details>
+            </div>
+            <p id="view-status" class="view-status" role="status" aria-live="polite"></p>
           </div>
 
           <div class="plot-shell">
@@ -362,6 +386,6 @@
       </main>
     </div>
 
-    <script src="./app.js"></script>
+    <script src="./app.js?v=20260830-hybrid-view"></script>
   </body>
 </html>

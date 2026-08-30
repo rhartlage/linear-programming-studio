@@ -18,6 +18,8 @@ Because both apps use browser modules, serve the repository with any static file
 
 The 3D solver tests can be run from `3d/` with `npm test`, and `npm run check` validates its JavaScript syntax.
 
+The 2D axis-view and optimization regression tests run from the repository root with `node --test tests/axis-view.test.mjs`.
+
 ## Public site
 
 The primary public URL is:
