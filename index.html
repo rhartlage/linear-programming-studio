@@ -22,7 +22,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260830-hybrid-view" />
+    <link rel="stylesheet" href="./styles.css?v=20260901-linked-workspace" />
   </head>
   <body>
     <div class="page-shell">
@@ -32,9 +32,9 @@
           <h1>Build the region. Drag the objective. See the optimum.</h1>
         </div>
         <p class="hero-copy">
-          Students can enter constraints in slope-intercept form, visualize the
-          feasible polygon, and slide the objective function parallel to itself
-          to find the best point or edge.
+          Edit the problem statement, coefficient table, objective equation, or
+          graph. Every view stays in sync as you explore the feasible region and
+          find the best point or edge.
         </p>
       </header>
 
@@ -57,21 +57,29 @@
               </div>
             </div>
 
-            <div class="button-row spotlight-row">
-              <button id="load-example" class="button button-secondary spotlight-button" type="button">
+            <div class="button-row spotlight-row problem-file-actions" aria-label="Problem actions">
+              <button id="load-example" class="button button-secondary" type="button">
                 Restore default example
               </button>
+              <button id="export-problem" class="button button-secondary" type="button" aria-describedby="file-transfer-status">
+                Export JSON
+              </button>
+              <button id="import-problem" class="button button-secondary" type="button" aria-describedby="file-transfer-status">
+                Import JSON
+              </button>
+              <input id="problem-file-input" type="file" accept=".json,application/json" aria-label="Choose a saved LP problem JSON file" hidden />
             </div>
+            <p id="file-transfer-status" class="inline-validation" role="status" aria-live="polite" hidden></p>
 
-            <section class="card model-loader-card">
+            <section class="card model-editor-card">
               <div class="card-head compact">
                 <div>
-                  <h3>Load model</h3>
-                  <p>Paste a two-variable LP statement or a coefficient table, preview it, then load it into the graph.</p>
+                  <h3>Problem inputs</h3>
+                  <p>Edit either view. Valid changes update the other view and the graph automatically.</p>
                 </div>
               </div>
 
-              <div class="loader-tab-row" role="tablist" aria-label="Model loader modes">
+              <div class="editor-tab-row" role="tablist" aria-label="Problem input views">
                 <button
                   id="model-tab-statement"
                   class="tab-button is-active"
@@ -80,6 +88,7 @@
                   aria-selected="true"
                   aria-controls="model-panel-statement"
                   data-loader-tab="statement"
+                  data-editor-tab="statement"
                 >
                   Problem statement
                 </button>
@@ -91,6 +100,7 @@
                   aria-selected="false"
                   aria-controls="model-panel-table"
                   data-loader-tab="table"
+                  data-editor-tab="table"
                 >
                   Coefficient table
                 </button>
@@ -98,24 +108,27 @@
 
               <div
                 id="model-panel-statement"
-                class="model-loader-panel"
+                class="model-editor-panel"
                 role="tabpanel"
                 aria-labelledby="model-tab-statement"
               >
-                <label class="loader-textarea-label">
+                <label class="editor-textarea-label">
                   <span>Problem statement</span>
                   <textarea
                     id="statement-input"
                     rows="8"
+                    aria-describedby="statement-format-help statement-validation"
+                    spellcheck="false"
                     placeholder="Max 5A + 9B&#10;s.t.&#10;1A + 2B <= 8&#10;7A + 5B <= 35&#10;A,B >= 0"
                   ></textarea>
                 </label>
-                <p class="loader-note">Use a standard two-variable LP format with `Max` or `Min`, one constraint per line, optional nonnegativity such as `A,B >= 0`, and fractions like `1/2` when needed.</p>
+                <p id="statement-format-help" class="editor-note">Use <code>Max</code> or <code>Min</code>, one constraint per line, optional nonnegativity such as <code>A,B &gt;= 0</code>, and fractions such as <code>1/2</code>.</p>
+                <p id="statement-validation" class="inline-validation" role="status" aria-live="polite" aria-atomic="true" hidden></p>
               </div>
 
               <div
                 id="model-panel-table"
-                class="model-loader-panel is-hidden"
+                class="model-editor-panel is-hidden"
                 role="tabpanel"
                 aria-labelledby="model-tab-table"
                 hidden
@@ -168,15 +181,16 @@
                   </label>
                 </div>
 
-                <div class="loader-sheet-block">
-                  <div class="loader-sheet-label-row">
+                <div class="editor-sheet-block">
+                  <div class="editor-sheet-label-row">
                     <span>Constraint table</span>
-                    <span class="loader-sheet-caption">Type into the cells or paste rows from Excel or Google Sheets.</span>
+                    <span class="editor-sheet-caption">Each valid cell change updates the full problem.</span>
                   </div>
                   <div class="table-sheet-scroller">
-                    <div class="table-sheet" role="table" aria-label="Constraint table">
+                    <div class="table-sheet" role="table" aria-label="Constraint table" aria-describedby="table-loader-note table-validation">
                       <div class="table-sheet-row table-sheet-header" role="row">
                         <div class="table-sheet-index" aria-hidden="true"></div>
+                        <div id="table-header-enabled" class="table-sheet-cell table-sheet-enabled" role="columnheader">On</div>
                         <div class="table-sheet-cell" role="columnheader">name</div>
                         <div id="table-header-x-label" class="table-sheet-cell" role="columnheader">A coeff</div>
                         <div id="table-header-y-label" class="table-sheet-cell" role="columnheader">B coeff</div>
@@ -196,32 +210,13 @@
                   </div>
                 </div>
 
-                <label class="loader-inline-toggle">
+                <label class="editor-inline-toggle">
                   <input id="table-default-nonnegative" type="checkbox" checked />
-                  <span id="table-default-nonnegative-label">Add `A >= 0` and `B >= 0` if they are not already listed</span>
+                  <span id="table-default-nonnegative-label">Add <code>A &gt;= 0</code> and <code>B &gt;= 0</code> if they are not already listed</span>
                 </label>
 
-                <p id="table-loader-note" class="loader-note">Paste spreadsheet rows directly into the grid. A header row is optional, the columns are `name`, `A coeff`, `B coeff`, `relation`, and `rhs`. Fractions like `1/2` are accepted, and strict `<` or `>` will be treated as `<=` or `>=` for graphing.</p>
-              </div>
-
-              <div class="button-row">
-                <button id="preview-model" class="button button-secondary" type="button">
-                  Preview model
-                </button>
-                <button id="apply-model" class="button button-primary" type="button">
-                  Load into graph
-                </button>
-                <button id="clear-model-input" class="button button-ghost" type="button">
-                  Clear loader
-                </button>
-              </div>
-
-              <div class="model-preview" aria-live="polite">
-                <div class="model-preview-summary">
-                  <strong id="model-preview-badge" class="status-badge neutral">Waiting</strong>
-                  <p id="model-preview-text">Paste a model, then click Preview model or Load into graph.</p>
-                </div>
-                <div id="model-preview-details" class="model-preview-details"></div>
+                <p id="table-loader-note" class="editor-note">The columns are <code>On</code>, <code>name</code>, <code>A coeff</code>, <code>B coeff</code>, <code>relation</code>, and <code>rhs</code>. Fractions such as <code>1/2</code> are accepted; strict <code>&lt;</code> or <code>&gt;</code> is graphed as <code>&lt;=</code> or <code>&gt;=</code>.</p>
+                <p id="table-validation" class="inline-validation" role="status" aria-live="polite" aria-atomic="true" hidden></p>
               </div>
             </section>
 
@@ -229,7 +224,7 @@
               <div class="card-head">
                 <div>
                   <h3>Objective function</h3>
-                  <p>Drag the amber midpoint to move it in parallel, or drag an endpoint to change its slope.</p>
+                  <p>Edit the objective coefficients or its line form. Drag the amber midpoint to move it in parallel, or an endpoint to change its slope.</p>
                 </div>
               </div>
 
@@ -242,23 +237,51 @@
                   </select>
                 </label>
                 <label>
-                  <span>Slope m</span>
-                  <input id="objective-x" type="text" inputmode="text" value="0.75" />
+                  <span id="objective-x-label">x coefficient</span>
+                  <input id="objective-x" type="text" inputmode="text" value="0.75" aria-describedby="objective-validation" />
                 </label>
                 <label>
-                  <span>Intercept b</span>
-                  <input id="objective-y" type="text" inputmode="text" value="1" />
+                  <span id="objective-y-label">y coefficient</span>
+                  <input id="objective-y" type="text" inputmode="text" value="1" aria-describedby="objective-validation" />
                 </label>
                 <label>
                   <span>Level z</span>
-                  <input id="objective-level" type="text" inputmode="text" value="2" />
+                  <input id="objective-level" type="text" inputmode="text" value="2" aria-describedby="objective-validation" />
                 </label>
               </div>
 
-              <div class="button-row">
-                <button id="snap-optimum" class="button button-secondary" type="button">
-                  Snap objective to optimum
-                </button>
+              <div id="objective-line-form" class="objective-line-editor" aria-labelledby="objective-line-heading">
+                <div class="objective-line-editor-head">
+                  <div>
+                    <h4 id="objective-line-heading">Slope-intercept form</h4>
+                    <p id="objective-line-help">Edit <em>m</em> or <em>b</em>. A vertical objective is shown as <em>x = c</em>.</p>
+                  </div>
+                  <output
+                    id="objective-line-equation"
+                    class="equation-chip"
+                    aria-label="Current objective line equation"
+                    aria-live="polite"
+                  >y = -0.75x + 2</output>
+                </div>
+
+                <div id="objective-line-standard-fields" class="form-grid objective-line-fields">
+                  <label>
+                    <span>Slope m</span>
+                    <input id="objective-line-slope" type="text" inputmode="text" value="-0.75" aria-describedby="objective-line-help objective-validation" />
+                  </label>
+                  <label>
+                    <span>Intercept b</span>
+                    <input id="objective-line-intercept" type="text" inputmode="text" value="2" aria-describedby="objective-line-help objective-validation" />
+                  </label>
+                </div>
+
+                <div id="objective-line-vertical-field" class="form-grid objective-line-fields" hidden>
+                  <label>
+                    <span>Vertical line c in x = c</span>
+                    <input id="objective-line-vertical-value" type="text" inputmode="text" value="2.6667" aria-describedby="objective-line-help objective-validation" />
+                  </label>
+                </div>
+                <p id="objective-validation" class="inline-validation" role="status" aria-live="polite" aria-atomic="true" hidden></p>
               </div>
             </section>
 
@@ -347,6 +370,11 @@
               role="img"
               aria-label="2D graph showing linear constraints, the feasible region, the objective function, and its improving direction"
             ></svg>
+            <div class="plot-action-bar">
+              <button id="snap-optimum" class="button snap-optimum-button" type="button" aria-controls="plot optimum-text">
+                Snap objective to optimum
+              </button>
+            </div>
           </div>
 
           <div class="plot-caption">
@@ -386,6 +414,6 @@
       </main>
     </div>
 
-    <script src="./app.js?v=20260830-hybrid-view"></script>
+    <script src="./app.js?v=20260901-linked-workspace"></script>
   </body>
 </html>
