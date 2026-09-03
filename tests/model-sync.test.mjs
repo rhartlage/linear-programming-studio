@@ -64,6 +64,9 @@ function createApp() {
     applyProblemDocument,
     syncObjectiveLineFromState,
     handleObjectiveLineInput,
+    handleSnapOptimum,
+    didFindOptimalSolution,
+    buildConfettiSpecs,
     computeAutomaticView,
     setViewWindow,
     getAnalysis,
@@ -79,6 +82,16 @@ function createApp() {
     stubObjectiveEditSideEffects() {
       syncLinkedEditors = () => {};
       refresh = () => {};
+    },
+    stubSnapSideEffects() {
+      syncObjectiveInputs = () => {};
+      syncLinkedEditors = () => {};
+      refresh = () => { analysisCache = null; };
+      startSolutionCelebration = (optimization) => {
+        const calls = Number(dom.solutionAnnouncement.dataset.calls || 0) + 1;
+        dom.solutionAnnouncement.dataset.calls = String(calls);
+        dom.solutionAnnouncement.textContent = optimization.status;
+      };
     },
     invalidateAnalysis() { analysisCache = null; },
     resetConstraintIds() { nextConstraintId = 1; }
@@ -479,4 +492,85 @@ test("coefficient-table production fixture retains the 7,668 optimum at (540, 25
       Math.abs(point.x - 540) < 1e-5 && Math.abs(point.y - 252) < 1e-5
     )
   );
+});
+
+test("snap celebrates only after it lands on a finite optimal solution", () => {
+  const app = createApp();
+  app.stubSnapSideEffects();
+  app.state.constraints = [
+    app.createConstraint({ type: "x_geq", param1: "0", param2: "0" }),
+    app.createConstraint({ type: "x_leq", param1: "4", param2: "0" }),
+    app.createConstraint({ type: "y_geq", param1: "0", param2: "0" }),
+    app.createConstraint({ type: "y_leq", param1: "3", param2: "0" }),
+  ];
+  app.state.objective = { mode: "max", xCoeff: "1", yCoeff: "1", level: "0" };
+  app.invalidateAnalysis();
+
+  assert.equal(app.handleSnapOptimum(), true);
+  assert.equal(app.didFindOptimalSolution(app.getAnalysis()), true);
+  assertClose(app.parseFlexibleNumber(app.state.objective.level), 7);
+  assert.equal(app.dom.solutionAnnouncement.dataset.calls, "1");
+
+  assert.equal(app.handleSnapOptimum(), true, "Pressing again should replay the celebration.");
+  assert.equal(app.dom.solutionAnnouncement.dataset.calls, "2");
+});
+
+test("snap does not celebrate infeasible, flat, or objective-unbounded results", () => {
+  const scenarios = [
+    {
+      name: "infeasible",
+      constraints: [
+        { type: "x_geq", param1: "2", param2: "0" },
+        { type: "x_leq", param1: "1", param2: "0" },
+      ],
+      objective: { mode: "max", xCoeff: "1", yCoeff: "1", level: "0" },
+    },
+    {
+      name: "flat",
+      constraints: [
+        { type: "x_geq", param1: "0", param2: "0" },
+        { type: "x_leq", param1: "4", param2: "0" },
+        { type: "y_geq", param1: "0", param2: "0" },
+        { type: "y_leq", param1: "3", param2: "0" },
+      ],
+      objective: { mode: "max", xCoeff: "0", yCoeff: "0", level: "0" },
+    },
+    {
+      name: "unbounded",
+      constraints: [
+        { type: "x_geq", param1: "0", param2: "0" },
+        { type: "y_geq", param1: "0", param2: "0" },
+      ],
+      objective: { mode: "max", xCoeff: "1", yCoeff: "1", level: "0" },
+    },
+  ];
+
+  scenarios.forEach((scenario) => {
+    const app = createApp();
+    app.stubSnapSideEffects();
+    app.state.constraints = scenario.constraints.map((constraint) => app.createConstraint(constraint));
+    app.state.objective = { ...scenario.objective };
+    app.invalidateAnalysis();
+
+    assert.equal(app.handleSnapOptimum(), false, scenario.name);
+    assert.equal(app.dom.solutionAnnouncement.dataset.calls, undefined, scenario.name);
+  });
+});
+
+test("confetti specs are reproducible, side-directed, and finish within two seconds", () => {
+  const app = createApp();
+  const values = [0, 0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 0.95];
+  const makeRandom = () => {
+    let index = 0;
+    return () => values[index++ % values.length];
+  };
+
+  const left = plain(app.buildConfettiSpecs({ side: "left", count: 6, random: makeRandom() }));
+  const repeated = plain(app.buildConfettiSpecs({ side: "left", count: 6, random: makeRandom() }));
+  const right = plain(app.buildConfettiSpecs({ side: "right", count: 6, random: makeRandom() }));
+
+  assert.deepEqual(left, repeated);
+  assert.ok(left.every((spec) => spec.midX > 0 && spec.endX > 0));
+  assert.ok(right.every((spec) => spec.midX < 0 && spec.endX < 0));
+  assert.ok([...left, ...right].every((spec) => spec.delay + spec.duration < 2000));
 });

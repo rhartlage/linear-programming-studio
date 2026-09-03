@@ -24,6 +24,10 @@ const CONTROL_COLUMN_MAX_WIDTH = 800;
 const GRAPH_COLUMN_MIN_WIDTH = 520;
 const WORKSPACE_DIVIDER_FALLBACK_WIDTH = 22;
 const WORKSPACE_DIVIDER_KEY_STEP = 24;
+const OPTIMUM_CELEBRATION_DURATION_MS = 2000;
+const CONFETTI_PIECES_PER_SIDE = 24;
+const CONFETTI_PIECES_PER_SIDE_MOBILE = 16;
+const CONFETTI_COLORS = ["#F05D3D", "#1F7A8C", "#F5A623", "#2F6DF6", "#A13CF5", "#1B9C85"];
 const CONSTRAINT_TYPES = [
   { value: "line_leq", label: "y <= mx + b" },
   { value: "line_geq", label: "y >= mx + b" },
@@ -122,6 +126,9 @@ const dom = {
   objectiveText: document.getElementById("objective-text"),
   optimumBadge: document.getElementById("optimum-badge"),
   optimumText: document.getElementById("optimum-text"),
+  solutionCelebration: document.getElementById("solution-celebration"),
+  solutionConfetti: document.getElementById("solution-confetti"),
+  solutionAnnouncement: document.getElementById("solution-announcement"),
 };
 
 const EXAMPLE_PROBLEM = {
@@ -178,6 +185,8 @@ let tableCommitTimer = null;
 let linkedEditorFrame = null;
 let editorSyncInProgress = false;
 let objectiveLineSlopePending = false;
+let solutionCelebrationTimer = null;
+let solutionCelebrationRun = 0;
 const invalidDrafts = { statement: false, table: false, objective: false, constraints: false };
 
 initialize();
@@ -603,20 +612,131 @@ function bindStaticEvents() {
     });
   });
 
-  dom.snapOptimum.addEventListener("click", () => {
-    const analysis = getAnalysis();
-    if (analysis.optimization.status === "bounded") {
-      state.objective.level = formatEditableNumber(analysis.optimization.bestValue);
-      syncObjectiveInputs();
-      syncLinkedEditors("controls");
-      refresh();
-    }
-  });
+  dom.snapOptimum.addEventListener("click", handleSnapOptimum);
 
   dom.plot.addEventListener("pointerdown", handlePlotPointerDown);
   dom.plot.addEventListener("wheel", handlePlotWheel, { passive: false });
   window.addEventListener("pointermove", handlePlotPointerMove);
   window.addEventListener("pointerup", handlePlotPointerUp);
+  window.addEventListener("pagehide", () => stopSolutionCelebration());
+}
+
+function handleSnapOptimum() {
+  const analysis = getAnalysis();
+  if (analysis.optimization.status !== "bounded") {
+    return false;
+  }
+
+  state.objective.level = formatEditableNumber(analysis.optimization.bestValue);
+  syncObjectiveInputs();
+  syncLinkedEditors("controls");
+  refresh();
+
+  const snappedAnalysis = getAnalysis();
+  if (!didFindOptimalSolution(snappedAnalysis)) {
+    return false;
+  }
+
+  startSolutionCelebration(snappedAnalysis.optimization);
+  return true;
+}
+
+function didFindOptimalSolution(analysis) {
+  const optimization = analysis?.optimization;
+  return optimization?.status === "bounded"
+    && Number.isFinite(optimization.bestValue)
+    && Array.isArray(optimization.bestContacts)
+    && optimization.bestContacts.length > 0
+    && isObjectiveAtOptimum(analysis);
+}
+
+function startSolutionCelebration(optimization) {
+  stopSolutionCelebration();
+  solutionCelebrationRun += 1;
+  const currentRun = solutionCelebrationRun;
+
+  dom.solutionAnnouncement.textContent = `Optimal solution found. ${optimization.message}`;
+
+  const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  if (prefersReducedMotion) {
+    return;
+  }
+
+  const mobile = window.matchMedia?.("(max-width: 700px)").matches;
+  const count = mobile ? CONFETTI_PIECES_PER_SIDE_MOBILE : CONFETTI_PIECES_PER_SIDE;
+  const fragment = document.createDocumentFragment();
+
+  ["left", "right"].forEach((side) => {
+    buildConfettiSpecs({ side, count }).forEach((spec) => {
+      fragment.appendChild(createConfettiPiece(spec));
+    });
+  });
+
+  dom.solutionCelebration.dataset.state = "idle";
+  dom.solutionConfetti.replaceChildren(fragment);
+  void dom.solutionCelebration.offsetWidth;
+  dom.solutionCelebration.dataset.state = "active";
+
+  solutionCelebrationTimer = window.setTimeout(() => {
+    stopSolutionCelebration(currentRun);
+  }, OPTIMUM_CELEBRATION_DURATION_MS);
+}
+
+function stopSolutionCelebration(expectedRun = null) {
+  if (expectedRun !== null && expectedRun !== solutionCelebrationRun) {
+    return;
+  }
+
+  if (solutionCelebrationTimer !== null) {
+    window.clearTimeout(solutionCelebrationTimer);
+    solutionCelebrationTimer = null;
+  }
+
+  dom.solutionCelebration.dataset.state = "idle";
+  dom.solutionConfetti.replaceChildren();
+}
+
+function buildConfettiSpecs({ side, count, random = Math.random }) {
+  const direction = side === "right" ? -1 : 1;
+
+  return Array.from({ length: count }, (_, index) => ({
+    side: direction === 1 ? "left" : "right",
+    color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+    round: index % 4 === 0,
+    startY: randomBetween(random, 12, 84),
+    midX: direction * randomBetween(random, 18, 34),
+    midY: -randomBetween(random, 10, 32),
+    endX: direction * randomBetween(random, 42, 72),
+    endY: randomBetween(random, 6, 38),
+    midRotation: direction * randomBetween(random, 160, 420),
+    endRotation: direction * randomBetween(random, 520, 980),
+    delay: randomBetween(random, 0, 140),
+    duration: randomBetween(random, 1150, 1550),
+    width: randomBetween(random, 6, 10),
+    height: randomBetween(random, 10, 18),
+  }));
+}
+
+function randomBetween(random, minimum, maximum) {
+  return minimum + (maximum - minimum) * random();
+}
+
+function createConfettiPiece(spec) {
+  const piece = document.createElement("span");
+  piece.className = `lp-confetti-piece lp-confetti-piece--${spec.side}${spec.round ? " is-round" : ""}`;
+  piece.style.setProperty("--lp-confetti-color", spec.color);
+  piece.style.setProperty("--lp-confetti-start-y", `${spec.startY.toFixed(2)}vh`);
+  piece.style.setProperty("--lp-confetti-mid-x", `${spec.midX.toFixed(2)}vw`);
+  piece.style.setProperty("--lp-confetti-mid-y", `${spec.midY.toFixed(2)}vh`);
+  piece.style.setProperty("--lp-confetti-end-x", `${spec.endX.toFixed(2)}vw`);
+  piece.style.setProperty("--lp-confetti-end-y", `${spec.endY.toFixed(2)}vh`);
+  piece.style.setProperty("--lp-confetti-mid-rotation", `${spec.midRotation.toFixed(1)}deg`);
+  piece.style.setProperty("--lp-confetti-end-rotation", `${spec.endRotation.toFixed(1)}deg`);
+  piece.style.setProperty("--lp-confetti-delay", `${spec.delay.toFixed(0)}ms`);
+  piece.style.setProperty("--lp-confetti-duration", `${spec.duration.toFixed(0)}ms`);
+  piece.style.setProperty("--lp-confetti-width", `${spec.width.toFixed(1)}px`);
+  piece.style.setProperty("--lp-confetti-height", `${spec.height.toFixed(1)}px`);
+  return piece;
 }
 
 function handleConstraintInput(event) {

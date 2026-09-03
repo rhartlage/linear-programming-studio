@@ -22,7 +22,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260901-linked-workspace" />
+    <link rel="stylesheet" href="./styles.css?v=20260902-optimum-celebration" />
   </head>
   <body>
     <div class="page-shell">
@@ -414,6 +414,28 @@
       </main>
     </div>
 
-    <script src="./app.js?v=20260901-linked-workspace"></script>
+    <div id="solution-celebration" class="lp-celebration" data-state="idle" aria-hidden="true">
+      <div id="solution-confetti" class="lp-confetti"></div>
+      <svg class="lp-happy-dancer" viewBox="0 0 120 140" focusable="false" aria-hidden="true">
+        <circle class="lp-happy-dancer__halo" cx="60" cy="70" r="56"></circle>
+        <g class="lp-happy-dancer__figure">
+          <path class="lp-happy-dancer__hat" d="M46 20 L59 2 L72 20 Z"></path>
+          <circle class="lp-happy-dancer__head" cx="60" cy="32" r="15"></circle>
+          <circle class="lp-happy-dancer__eye" cx="54" cy="30" r="2"></circle>
+          <circle class="lp-happy-dancer__eye" cx="66" cy="30" r="2"></circle>
+          <path class="lp-happy-dancer__smile" d="M52 36 Q60 44 68 36"></path>
+          <path class="lp-happy-dancer__torso" d="M60 47 L60 84"></path>
+          <path class="lp-happy-dancer__limb lp-happy-dancer__arm--left" d="M60 56 Q43 50 31 30"></path>
+          <path class="lp-happy-dancer__limb lp-happy-dancer__arm--right" d="M60 56 Q77 50 90 29"></path>
+          <path class="lp-happy-dancer__limb lp-happy-dancer__leg--left" d="M60 84 Q49 103 36 122"></path>
+          <path class="lp-happy-dancer__limb lp-happy-dancer__leg--right" d="M60 84 Q74 101 86 120"></path>
+          <circle class="lp-happy-dancer__hand" cx="30" cy="28" r="4"></circle>
+          <circle class="lp-happy-dancer__hand" cx="91" cy="27" r="4"></circle>
+        </g>
+      </svg>
+    </div>
+    <p id="solution-announcement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
+
+    <script src="./app.js?v=20260902-optimum-celebration"></script>
   </body>
 </html>
