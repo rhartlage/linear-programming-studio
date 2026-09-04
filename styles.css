@@ -969,6 +969,11 @@ textarea:focus,
   right: -18px;
 }
 
+.lp-confetti-piece--top {
+  left: var(--lp-confetti-start-x);
+  animation-timing-function: linear;
+}
+
 .lp-confetti-piece.is-round {
   border-radius: 999px;
 }
