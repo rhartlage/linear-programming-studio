@@ -24,9 +24,9 @@ const CONTROL_COLUMN_MAX_WIDTH = 800;
 const GRAPH_COLUMN_MIN_WIDTH = 520;
 const WORKSPACE_DIVIDER_FALLBACK_WIDTH = 22;
 const WORKSPACE_DIVIDER_KEY_STEP = 24;
-const OPTIMUM_CELEBRATION_DURATION_MS = 2000;
-const CONFETTI_PIECES_PER_SIDE = 24;
-const CONFETTI_PIECES_PER_SIDE_MOBILE = 16;
+const OPTIMUM_CELEBRATION_DURATION_MS = 4200;
+const CONFETTI_PIECES_PER_SIDE = 72;
+const CONFETTI_PIECES_PER_SIDE_MOBILE = 42;
 const CONFETTI_COLORS = ["#F05D3D", "#1F7A8C", "#F5A623", "#2F6DF6", "#A13CF5", "#1B9C85"];
 const CONSTRAINT_TYPES = [
   { value: "line_leq", label: "y <= mx + b" },
@@ -129,6 +129,7 @@ const dom = {
   solutionCelebration: document.getElementById("solution-celebration"),
   solutionConfetti: document.getElementById("solution-confetti"),
   solutionAnnouncement: document.getElementById("solution-announcement"),
+  celebrationEnabled: document.getElementById("celebration-enabled"),
 };
 
 const EXAMPLE_PROBLEM = {
@@ -613,6 +614,7 @@ function bindStaticEvents() {
   });
 
   dom.snapOptimum.addEventListener("click", handleSnapOptimum);
+  dom.celebrationEnabled.addEventListener("change", handleCelebrationPreferenceChange);
 
   dom.plot.addEventListener("pointerdown", handlePlotPointerDown);
   dom.plot.addEventListener("wheel", handlePlotWheel, { passive: false });
@@ -658,7 +660,7 @@ function startSolutionCelebration(optimization) {
   dom.solutionAnnouncement.textContent = `Optimal solution found. ${optimization.message}`;
 
   const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  if (prefersReducedMotion) {
+  if (!dom.celebrationEnabled.checked || prefersReducedMotion) {
     return;
   }
 
@@ -682,6 +684,12 @@ function startSolutionCelebration(optimization) {
   }, OPTIMUM_CELEBRATION_DURATION_MS);
 }
 
+function handleCelebrationPreferenceChange() {
+  if (!dom.celebrationEnabled.checked) {
+    stopSolutionCelebration();
+  }
+}
+
 function stopSolutionCelebration(expectedRun = null) {
   if (expectedRun !== null && expectedRun !== solutionCelebrationRun) {
     return;
@@ -703,17 +711,18 @@ function buildConfettiSpecs({ side, count, random = Math.random }) {
     side: direction === 1 ? "left" : "right",
     color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
     round: index % 4 === 0,
-    startY: randomBetween(random, 12, 84),
+    startY: randomBetween(random, 25, 95),
     midX: direction * randomBetween(random, 18, 34),
-    midY: -randomBetween(random, 10, 32),
+    midY: -randomBetween(random, 18, 46),
     endX: direction * randomBetween(random, 42, 72),
-    endY: randomBetween(random, 6, 38),
+    endY: randomBetween(random, 18, 60),
     midRotation: direction * randomBetween(random, 160, 420),
     endRotation: direction * randomBetween(random, 520, 980),
-    delay: randomBetween(random, 0, 140),
-    duration: randomBetween(random, 1150, 1550),
-    width: randomBetween(random, 6, 10),
-    height: randomBetween(random, 10, 18),
+    // Three volleys keep the celebration lively without adding animation timers.
+    delay: (index % 3) * 650 + randomBetween(random, 0, 180),
+    duration: randomBetween(random, 1900, 2650),
+    width: randomBetween(random, 7, 13),
+    height: randomBetween(random, 12, 24),
   }));
 }
 

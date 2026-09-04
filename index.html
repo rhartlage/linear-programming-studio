@@ -22,7 +22,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260902-optimum-celebration" />
+    <link rel="stylesheet" href="./styles.css?v=20260904-big-celebration-v2" />
   </head>
   <body>
     <div class="page-shell">
@@ -36,6 +36,10 @@
           graph. Every view stays in sync as you explore the feasible region and
           find the best point or edge.
         </p>
+        <label class="celebration-toggle">
+          <input id="celebration-enabled" type="checkbox" checked />
+          <span>Celebrate optimal solutions</span>
+        </label>
       </header>
 
       <main id="workspace" class="workspace">
@@ -416,26 +420,57 @@
 
     <div id="solution-celebration" class="lp-celebration" data-state="idle" aria-hidden="true">
       <div id="solution-confetti" class="lp-confetti"></div>
-      <svg class="lp-happy-dancer" viewBox="0 0 120 140" focusable="false" aria-hidden="true">
-        <circle class="lp-happy-dancer__halo" cx="60" cy="70" r="56"></circle>
-        <g class="lp-happy-dancer__figure">
-          <path class="lp-happy-dancer__hat" d="M46 20 L59 2 L72 20 Z"></path>
-          <circle class="lp-happy-dancer__head" cx="60" cy="32" r="15"></circle>
-          <circle class="lp-happy-dancer__eye" cx="54" cy="30" r="2"></circle>
-          <circle class="lp-happy-dancer__eye" cx="66" cy="30" r="2"></circle>
-          <path class="lp-happy-dancer__smile" d="M52 36 Q60 44 68 36"></path>
-          <path class="lp-happy-dancer__torso" d="M60 47 L60 84"></path>
-          <path class="lp-happy-dancer__limb lp-happy-dancer__arm--left" d="M60 56 Q43 50 31 30"></path>
-          <path class="lp-happy-dancer__limb lp-happy-dancer__arm--right" d="M60 56 Q77 50 90 29"></path>
-          <path class="lp-happy-dancer__limb lp-happy-dancer__leg--left" d="M60 84 Q49 103 36 122"></path>
-          <path class="lp-happy-dancer__limb lp-happy-dancer__leg--right" d="M60 84 Q74 101 86 120"></path>
-          <circle class="lp-happy-dancer__hand" cx="30" cy="28" r="4"></circle>
-          <circle class="lp-happy-dancer__hand" cx="91" cy="27" r="4"></circle>
-        </g>
-      </svg>
+      <div class="lp-celebration-stage">
+        <p class="lp-celebration-title"><span>optimization</span> <span>celebration</span></p>
+        <svg class="lp-happy-dancer" viewBox="0 0 280 300" focusable="false" aria-hidden="true">
+          <ellipse class="lp-happy-dancer__shadow" cx="140" cy="280" rx="85" ry="10"></ellipse>
+          <path class="lp-happy-dancer__spark lp-happy-dancer__spark--one" d="M34 64 L38 79 L53 83 L38 87 L34 102 L30 87 L15 83 L30 79 Z"></path>
+          <path class="lp-happy-dancer__spark lp-happy-dancer__spark--two" d="M237 164 L241 176 L253 180 L241 184 L237 196 L233 184 L221 180 L233 176 Z"></path>
+          <g class="lp-happy-dancer__figure">
+            <g class="lp-happy-dancer__leg--left">
+              <path class="lp-happy-dancer__limb" d="M120 200 Q100 221 109 251"></path>
+              <path class="lp-happy-dancer__shoe" d="M108 245 Q85 239 72 255 Q68 267 115 268 Q128 263 120 247 Z"></path>
+              <path class="lp-happy-dancer__shoe-stripe" d="M76 261 L119 261"></path>
+            </g>
+            <g class="lp-happy-dancer__leg--right">
+              <path class="lp-happy-dancer__limb" d="M156 200 L178 226 L200 212"></path>
+              <path class="lp-happy-dancer__shoe" d="M192 211 Q195 188 211 188 Q223 192 219 210 Q222 225 207 229 Z"></path>
+              <path class="lp-happy-dancer__shoe-stripe" d="M211 195 L211 221"></path>
+            </g>
+            <g class="lp-happy-dancer__arm--left">
+              <path class="lp-happy-dancer__limb" d="M107 150 L70 164 L47 139"></path>
+              <path class="lp-happy-dancer__glove" d="M48 142 Q33 143 28 134 L21 122 Q19 116 24 114 Q29 112 35 123 L31 109 Q30 103 35 102 Q41 101 43 117 L46 108 Q48 103 53 106 Q57 109 51 127 Q61 123 63 128 Q65 133 48 142 Z"></path>
+            </g>
+            <g class="lp-happy-dancer__arm--right">
+              <path class="lp-happy-dancer__limb" d="M170 143 L204 124 L214 97"></path>
+              <path class="lp-happy-dancer__glove" d="M209 102 Q200 91 203 85 Q206 81 212 88 L211 70 Q211 64 216 64 Q222 64 221 83 L227 68 Q230 63 234 66 Q238 69 229 88 L240 81 Q246 78 248 83 Q250 89 236 99 Q225 109 209 102 Z"></path>
+            </g>
+            <path class="lp-happy-dancer__body" d="M110 122 Q89 145 100 191 Q104 212 138 214 Q171 215 179 194 Q190 149 164 123 Z"></path>
+            <path class="lp-happy-dancer__belly" d="M126 149 Q148 139 163 166 Q175 195 145 200 Q117 198 118 175 Z"></path>
+            <circle class="lp-happy-dancer__button" cx="139" cy="165" r="3"></circle>
+            <circle class="lp-happy-dancer__button" cx="142" cy="183" r="3"></circle>
+            <g class="lp-happy-dancer__head-group">
+              <path class="lp-happy-dancer__hat" d="M108 59 L132 14 L164 64 Z"></path>
+              <path class="lp-happy-dancer__hat-stripe" d="M119 39 L151 45 M113 51 L158 57"></path>
+              <circle class="lp-happy-dancer__pom" cx="131" cy="14" r="10"></circle>
+              <path class="lp-happy-dancer__head" d="M102 77 Q96 52 128 53 Q174 48 176 81 L175 103 Q170 132 139 133 Q101 130 101 103 Z"></path>
+              <ellipse class="lp-happy-dancer__eye-white" cx="122" cy="79" rx="14" ry="17"></ellipse>
+              <ellipse class="lp-happy-dancer__eye-white" cx="153" cy="79" rx="12" ry="14"></ellipse>
+              <ellipse class="lp-happy-dancer__eye" cx="125" cy="80" rx="4" ry="6"></ellipse>
+              <ellipse class="lp-happy-dancer__eye" cx="151" cy="75" rx="4" ry="5"></ellipse>
+              <path class="lp-happy-dancer__smile" d="M123 109 Q140 135 157 108 Z"></path>
+              <path class="lp-happy-dancer__tooth" d="M135 112 L135 120 L144 120 L144 112 Z"></path>
+              <path class="lp-happy-dancer__moustache" d="M139 100 C125 88 124 111 109 100 C112 119 132 114 139 106 C147 116 167 116 170 98 C154 112 152 89 139 100 Z"></path>
+              <ellipse class="lp-happy-dancer__nose" cx="140" cy="98" rx="10" ry="8"></ellipse>
+            </g>
+            <path class="lp-happy-dancer__bow" d="M136 137 L118 125 L118 148 Z M142 137 L160 125 L160 148 Z"></path>
+            <circle class="lp-happy-dancer__bow-knot" cx="139" cy="137" r="6"></circle>
+          </g>
+        </svg>
+      </div>
     </div>
     <p id="solution-announcement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
 
-    <script src="./app.js?v=20260902-optimum-celebration"></script>
+    <script src="./app.js?v=20260904-big-celebration-v2"></script>
   </body>
 </html>

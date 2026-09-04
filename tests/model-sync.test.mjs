@@ -48,6 +48,7 @@ function createApp() {
   return vm.runInContext(`({
     PROBLEM_FILE_SCHEMA,
     PROBLEM_FILE_VERSION,
+    OPTIMUM_CELEBRATION_DURATION_MS,
     state,
     dom,
     parseFlexibleNumber,
@@ -557,7 +558,7 @@ test("snap does not celebrate infeasible, flat, or objective-unbounded results",
   });
 });
 
-test("confetti specs are reproducible, side-directed, and finish within two seconds", () => {
+test("confetti specs are reproducible, side-directed, and finish before celebration cleanup", () => {
   const app = createApp();
   const values = [0, 0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 0.95];
   const makeRandom = () => {
@@ -572,5 +573,5 @@ test("confetti specs are reproducible, side-directed, and finish within two seco
   assert.deepEqual(left, repeated);
   assert.ok(left.every((spec) => spec.midX > 0 && spec.endX > 0));
   assert.ok(right.every((spec) => spec.midX < 0 && spec.endX < 0));
-  assert.ok([...left, ...right].every((spec) => spec.delay + spec.duration < 2000));
+  assert.ok([...left, ...right].every((spec) => spec.delay + spec.duration < app.OPTIMUM_CELEBRATION_DURATION_MS));
 });
