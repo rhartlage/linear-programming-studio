@@ -24,6 +24,8 @@ function createApp() {
             hidden: false,
             open: false,
             focused: false,
+            dataset: {},
+            classList: { toggle() {} },
             focus() { this.focused = true; },
             setAttribute(name, value) { attributes.set(name, String(value)); },
             removeAttribute(name) { attributes.delete(name); },
@@ -47,6 +49,9 @@ function createApp() {
     getAxisRangeInputs,
     applyAxisRanges,
     handleEqualAxisUnitsChange,
+    toggleGraphViewLock,
+    handlePlotPointerDown,
+    handlePlotWheel,
     zoomView,
     PLOT_BOX,
     MIN_VIEW_SPAN,
@@ -55,6 +60,7 @@ function createApp() {
     dom,
     get axisRangeDraftDirty() { return axisRangeDraftDirty; },
     set axisRangeDraftDirty(value) { axisRangeDraftDirty = value; },
+    get dragState() { return dragState; },
     stubRefreshForHandlers() { refresh = () => syncViewInputs(); },
     invalidateAnalysis() { analysisCache = null; }
   })`, context);
@@ -139,8 +145,55 @@ function setProductionModel(app) {
 test("equal axis units are enabled by default", () => {
   const app = createApp();
   assert.equal(app.state.viewSettings.equalUnits, true);
+  assert.equal(app.state.viewSettings.locked, false);
   assert.equal(app.MIN_VIEW_SPAN, 0.0001);
   assert.equal(app.MAX_VIEW_COORDINATE, 1e9);
+});
+
+test("locking fits the feasible region and unlocking preserves that view", () => {
+  const app = createApp();
+  app.stubRefreshForHandlers();
+  setProductionModel(app);
+  app.setViewWindow({ xMin: -100, xMax: -50, yMin: -80, yMax: -30 });
+
+  app.toggleGraphViewLock();
+  assert.equal(app.state.viewSettings.locked, true);
+  assert.deepEqual(plainView(app.getViewWindow()), plainView(app.getResetView()));
+  assert.equal(app.dom.lockViewInline.getAttribute("aria-pressed"), "true");
+  assert.match(app.dom.viewStatus.textContent, /fitted and locked/i);
+
+  const lockedView = plainView(app.getViewWindow());
+  app.toggleGraphViewLock();
+  assert.equal(app.state.viewSettings.locked, false);
+  assert.deepEqual(plainView(app.getViewWindow()), lockedView);
+  assert.equal(app.dom.lockViewInline.getAttribute("aria-pressed"), "false");
+});
+
+test("background pointer input cannot start a pan while the graph view is locked", () => {
+  const app = createApp();
+  app.state.viewSettings.locked = true;
+
+  app.handlePlotPointerDown({
+    target: {
+      closest() { return { dataset: { dragKind: "view-pan" } }; },
+    },
+  });
+
+  assert.equal(app.dragState, null);
+});
+
+test("wheel input cannot zoom a locked graph view", () => {
+  const app = createApp();
+  app.stubRefreshForHandlers();
+  const original = { xMin: -4, xMax: 12, yMin: -1, yMax: 5 };
+  app.setViewWindow(original);
+  app.state.viewSettings.locked = true;
+  let prevented = false;
+
+  app.handlePlotWheel({ deltaY: -100, preventDefault() { prevented = true; } });
+
+  assert.deepEqual(plainView(app.getViewWindow()), original);
+  assert.equal(prevented, false, "Locked graphs should let the page handle wheel scrolling.");
 });
 
 test("automatic fit frames the production feasible polygon, not the distant sewing intercept", () => {

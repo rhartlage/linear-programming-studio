@@ -22,7 +22,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.celebration-reliable-20260904-v1.css" />
+    <link rel="stylesheet" href="./styles.graph-lock-20260905-v1.css" />
   </head>
   <body>
     <div class="page-shell">
@@ -334,13 +334,23 @@
               <p class="section-kicker">Visualization</p>
               <h2>Feasible region and objective line</h2>
             </div>
-            <p class="graph-hint">Fit the feasible region, set your own axis ranges, or pan and zoom. Move the colored lines directly on the plot.</p>
+            <p class="graph-hint">Fit the feasible region, lock the view, or pan and zoom. Move the colored lines directly on the plot.</p>
           </div>
 
           <div class="plot-control-stack">
             <div class="plot-toolbar">
               <button id="reset-view-inline" class="button button-ghost plot-reset-button" type="button" aria-controls="plot">
                 Fit feasible region
+              </button>
+              <button
+                id="lock-view-inline"
+                class="button button-ghost plot-lock-button"
+                type="button"
+                aria-pressed="false"
+                aria-controls="plot"
+                aria-describedby="graph-lock-help"
+              >
+                Lock graph view
               </button>
               <label class="axis-equal-toggle">
                 <input id="equal-axis-units" type="checkbox" checked aria-describedby="axis-range-help" />
@@ -381,11 +391,12 @@
             </div>
           </div>
 
-          <div class="plot-caption">
+          <div id="graph-lock-help" class="plot-caption">
             Constraint colors match the cards on the left. The solid amber
             arrow points in the direction that improves the objective. Drag
             the graph background to pan the window, use your mouse wheel to
-            scale it, and move or rotate the lines directly on the plot.
+            scale it, or lock the graph view to prevent either. You can still
+            move or rotate the lines directly while the view is locked.
           </div>
 
           <section class="card status-card">
@@ -471,6 +482,6 @@
     </div>
     <p id="solution-announcement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
 
-    <script src="./app.celebration-reliable-20260904-v1.js"></script>
+    <script src="./app.graph-lock-20260905-v1.js"></script>
   </body>
 </html>
