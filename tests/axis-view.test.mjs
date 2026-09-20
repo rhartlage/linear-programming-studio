@@ -53,10 +53,14 @@ function createApp() {
     handlePlotPointerDown,
     handlePlotWheel,
     findFeasibleExtremePoints,
+    findObjectiveBoundaryIntersections,
     getExtremePointLabelLayout,
+    getPointLabelLayout,
     formatExtremePointLabel,
+    syncPlotAccessibleLabel,
     convertConstraintToHalfPlane,
     zoomView,
+    EXAMPLE_PROBLEM,
     PLOT_BOX,
     MIN_VIEW_SPAN,
     MAX_VIEW_COORDINATE,
@@ -223,6 +227,130 @@ test("visible extreme-point labels stay within the plot and avoid each other", (
       assert.equal(rectanglesOverlap(layouts[index].bounds, layouts[other].bounds), false);
     }
   }
+});
+
+test("the example objective exposes ordered pairs that follow the current level", () => {
+  const app = createApp();
+  app.state.constraints = structuredClone(app.EXAMPLE_PROBLEM.constraints);
+  app.state.objective = structuredClone(app.EXAMPLE_PROBLEM.objective);
+
+  for (const [level, expected] of [
+    [2, [{ x: 0, y: 2 }, { x: 8 / 3, y: 0 }]],
+    [4, [{ x: 0, y: 4 }, { x: 16 / 3, y: 0 }]],
+  ]) {
+    app.state.objective.level = level;
+    app.invalidateAnalysis();
+    const intersections = app.getAnalysis().objectiveBoundaryIntersections;
+    assert.deepEqual(Array.from(intersections, plainPoint).sort(comparePoints), expected.map(plainPoint));
+    assert.deepEqual(
+      Array.from(intersections, app.formatExtremePointLabel).sort(),
+      expected.map(app.formatExtremePointLabel).sort()
+    );
+  }
+});
+
+test("objective contacts exclude viewport edges even when clipping creates visible endpoints", () => {
+  const app = createApp();
+  app.state.constraints = [constraint("x_geq", 0), constraint("y_geq", 0)];
+  app.state.objective = { mode: "max", xCoeff: "1", yCoeff: "-1", level: 0 };
+  app.setViewWindow({ xMin: 0, xMax: 10, yMin: 0, yMax: 10 });
+
+  const analysis = app.getAnalysis();
+  assert.ok(analysis.currentContacts.some((point) => point.x === 10 && point.y === 10),
+    "The fixture must exercise a viewport-created endpoint.");
+  assert.deepEqual(Array.from(analysis.objectiveBoundaryIntersections, plainPoint), [{ x: 0, y: 0 }]);
+
+  app.setViewWindow({ xMin: 3, xMax: 5, yMin: 3, yMax: 5 });
+  app.invalidateAnalysis();
+  const panned = app.getAnalysis();
+  assert.deepEqual(Array.from(panned.objectiveBoundaryIntersections, plainPoint), [{ x: 0, y: 0 }],
+    "The genuine contacts must be independent of the current viewport.");
+  assert.equal(app.getPointLabelLayout([], panned.objectiveBoundaryIntersections, panned.view).length, 0);
+});
+
+test("objective intersections reject infeasible crossings and duplicate constraints", () => {
+  const app = createApp();
+  const halfPlanes = [...rectangleConstraints(0, 4, 0, 3), constraint("x_geq", 0), constraint("y_geq", 0)]
+    .map(app.convertConstraintToHalfPlane);
+  assert.deepEqual(
+    Array.from(app.findObjectiveBoundaryIntersections({ a: 1, b: 1, c: 5 }, halfPlanes), plainPoint).sort(comparePoints),
+    [{ x: 2, y: 3 }, { x: 4, y: 1 }]
+  );
+  assert.equal(app.findObjectiveBoundaryIntersections({ a: 1, b: 1, c: 20 }, halfPlanes).length, 0);
+
+  const infeasible = [constraint("x_geq", 2), constraint("x_leq", 1), constraint("y_geq", 0)]
+    .map(app.convertConstraintToHalfPlane);
+  assert.equal(app.findObjectiveBoundaryIntersections({ a: 1, b: 1, c: 3 }, infeasible).length, 0);
+});
+
+for (const fixture of [
+  { name: "vertical", line: { a: 1, b: 0, c: 2 }, expected: [{ x: 2, y: 0 }, { x: 2, y: 3 }] },
+  { name: "horizontal", line: { a: 0, b: 1, c: 2 }, expected: [{ x: 0, y: 2 }, { x: 4, y: 2 }] },
+  { name: "coincident bottom edge", line: { a: 0, b: 1, c: 0 }, expected: [{ x: 0, y: 0 }, { x: 4, y: 0 }] },
+  { name: "tangent vertex", line: { a: 1, b: 1, c: 7 }, expected: [{ x: 4, y: 3 }] },
+]) {
+  test(`a ${fixture.name} objective has only its genuine feasible boundary contacts`, () => {
+    const app = createApp();
+    const halfPlanes = rectangleConstraints(0, 4, 0, 3).map(app.convertConstraintToHalfPlane);
+    const contacts = app.findObjectiveBoundaryIntersections(fixture.line, halfPlanes);
+    assert.deepEqual(Array.from(contacts, plainPoint).sort(comparePoints), fixture.expected);
+  });
+}
+
+test("null, zero, and unconstrained objectives do not invent boundary contacts", () => {
+  const app = createApp();
+  const halfPlanes = rectangleConstraints(0, 4, 0, 3).map(app.convertConstraintToHalfPlane);
+  assert.equal(app.findObjectiveBoundaryIntersections(null, halfPlanes).length, 0);
+  assert.equal(app.findObjectiveBoundaryIntersections({ a: 0, b: 0, c: 0 }, halfPlanes).length, 0);
+  assert.equal(app.findObjectiveBoundaryIntersections({ a: 1, b: 1, c: 2 }, []).length, 0);
+
+  app.state.constraints = rectangleConstraints(0, 4, 0, 3);
+  app.state.objective = { mode: "max", xCoeff: "0", yCoeff: "0", level: 0 };
+  assert.equal(app.getAnalysis().objectiveBoundaryIntersections.length, 0);
+});
+
+test("shared objective and extreme points receive a single label with both roles", () => {
+  const app = createApp();
+  const view = { xMin: -1, xMax: 5, yMin: -1, yMax: 4 };
+  const extremes = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 3 }, { x: 4, y: 3 }];
+  const objective = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 0 }];
+  const layouts = app.getPointLabelLayout(extremes, objective, view);
+
+  assert.equal(layouts.length, 4);
+  for (const layout of layouts) {
+    assert.equal(layout.isExtremePoint, true);
+    assert.equal(layout.isObjectiveIntersection, layout.point.y === 0);
+  }
+  assert.equal(layouts.filter((layout) => layout.text === "(0, 0)").length, 1);
+});
+
+test("objective and extreme-point labels share collision handling and plot bounds", () => {
+  const app = createApp();
+  app.state.constraints = structuredClone(app.EXAMPLE_PROBLEM.constraints);
+  app.state.objective = structuredClone(app.EXAMPLE_PROBLEM.objective);
+  const analysis = app.getAnalysis();
+  const layouts = app.getPointLabelLayout(analysis.extremePoints, analysis.objectiveBoundaryIntersections, analysis.view);
+
+  assert.equal(layouts.length, 6);
+  assert.equal(layouts.filter((layout) => layout.isObjectiveIntersection).length, 2);
+  for (const { bounds } of layouts) {
+    assert.ok(bounds.left >= app.PLOT_BOX.x);
+    assert.ok(bounds.right <= app.PLOT_BOX.x + app.PLOT_BOX.width);
+    assert.ok(bounds.top >= app.PLOT_BOX.y);
+    assert.ok(bounds.bottom <= app.PLOT_BOX.y + app.PLOT_BOX.height);
+  }
+  for (let index = 0; index < layouts.length; index += 1) {
+    for (let other = index + 1; other < layouts.length; other += 1) {
+      assert.equal(rectanglesOverlap(layouts[index].bounds, layouts[other].bounds), false,
+        `${layouts[index].text} and ${layouts[other].text} should not overlap.`);
+    }
+  }
+
+  app.syncPlotAccessibleLabel(layouts);
+  const label = app.dom.plot.getAttribute("aria-label");
+  assert.match(label, /extreme points/i);
+  assert.match(label, /objective.*intersection/i);
+  for (const layout of layouts) assert.ok(label.includes(layout.text));
 });
 
 test("locking fits the feasible region and unlocking preserves that view", () => {
