@@ -52,6 +52,10 @@ function createApp() {
     toggleGraphViewLock,
     handlePlotPointerDown,
     handlePlotWheel,
+    findFeasibleExtremePoints,
+    getExtremePointLabelLayout,
+    formatExtremePointLabel,
+    convertConstraintToHalfPlane,
     zoomView,
     PLOT_BOX,
     MIN_VIEW_SPAN,
@@ -102,6 +106,19 @@ function plainView(view) {
   return { xMin: view.xMin, xMax: view.xMax, yMin: view.yMin, yMax: view.yMax };
 }
 
+function plainPoint(point) {
+  const normalize = (value) => Math.abs(value) < 1e-8 ? 0 : Number(value.toFixed(8));
+  return { x: normalize(point.x), y: normalize(point.y) };
+}
+
+function comparePoints(first, second) {
+  return first.x - second.x || first.y - second.y;
+}
+
+function rectanglesOverlap(first, second) {
+  return first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top;
+}
+
 function assertClose(actual, expected, tolerance = 1e-7) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should be within ${tolerance} of ${expected}`);
 }
@@ -148,6 +165,64 @@ test("equal axis units are enabled by default", () => {
   assert.equal(app.state.viewSettings.locked, false);
   assert.equal(app.MIN_VIEW_SPAN, 0.0001);
   assert.equal(app.MAX_VIEW_COORDINATE, 1e9);
+});
+
+test("the production model exposes every genuine extreme point", () => {
+  const app = createApp();
+  const halfPlanes = productionConstraints().map(app.convertConstraintToHalfPlane).filter(Boolean);
+  const actual = Array.from(app.findFeasibleExtremePoints(halfPlanes), plainPoint)
+    .sort(comparePoints);
+  const expected = productionVertices.map(plainPoint).sort(comparePoints);
+
+  assert.deepEqual(actual, expected);
+});
+
+test("an unbounded first quadrant has one real extreme point and no viewport corners", () => {
+  const app = createApp();
+  const halfPlanes = [constraint("x_geq", 0), constraint("y_geq", 0)]
+    .map(app.convertConstraintToHalfPlane)
+    .filter(Boolean);
+
+  assert.deepEqual(Array.from(app.findFeasibleExtremePoints(halfPlanes), plainPoint), [{ x: 0, y: 0 }]);
+});
+
+test("infeasible and duplicate intersections do not create bogus extreme points", () => {
+  const app = createApp();
+  const infeasible = [constraint("x_geq", 2), constraint("x_leq", 1), constraint("y_geq", 0)]
+    .map(app.convertConstraintToHalfPlane)
+    .filter(Boolean);
+  const duplicates = [...rectangleConstraints(0, 4, 0, 3), constraint("x_geq", 0), constraint("y_geq", 0)]
+    .map(app.convertConstraintToHalfPlane)
+    .filter(Boolean);
+
+  assert.equal(app.findFeasibleExtremePoints(infeasible).length, 0);
+  assert.equal(app.findFeasibleExtremePoints(duplicates).length, 4);
+});
+
+test("extreme-point labels use ordered-pair notation with compact fractions", () => {
+  const app = createApp();
+  assert.equal(app.formatExtremePointLabel({ x: 1 / 3, y: -2.5 }), "(1/3, -5/2)");
+  assert.equal(app.formatExtremePointLabel({ x: -0, y: 0 }), "(0, 0)");
+});
+
+test("visible extreme-point labels stay within the plot and avoid each other", () => {
+  const app = createApp();
+  const view = { xMin: 0, xMax: 10, yMin: 0, yMax: 10 };
+  const points = [{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 4 / 3, y: 17 / 3 }, { x: 0, y: 5 }, { x: 12, y: 12 }];
+  const layouts = app.getExtremePointLabelLayout(points, view);
+
+  assert.equal(layouts.length, 4, "Offscreen extreme points must not be labeled.");
+  layouts.forEach(({ bounds }) => {
+    assert.ok(bounds.left >= app.PLOT_BOX.x);
+    assert.ok(bounds.right <= app.PLOT_BOX.x + app.PLOT_BOX.width);
+    assert.ok(bounds.top >= app.PLOT_BOX.y);
+    assert.ok(bounds.bottom <= app.PLOT_BOX.y + app.PLOT_BOX.height);
+  });
+  for (let index = 0; index < layouts.length; index += 1) {
+    for (let other = index + 1; other < layouts.length; other += 1) {
+      assert.equal(rectanglesOverlap(layouts[index].bounds, layouts[other].bounds), false);
+    }
+  }
 });
 
 test("locking fits the feasible region and unlocking preserves that view", () => {
